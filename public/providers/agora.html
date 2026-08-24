@@ -13,12 +13,32 @@
     font: 12px system-ui, sans-serif; color: rgba(255,255,255,.75);
     text-shadow: 0 1px 3px #000; pointer-events: none; }
   #status.gone { display: none; }
+  /* live tuner (?tune=1) */
+  #tuner { position: absolute; top: 8px; left: 8px; z-index: 9; width: 190px;
+    background: rgba(0,0,0,.82); border: 1px solid #333; border-radius: 8px;
+    padding: 10px; font: 11px system-ui, sans-serif; color: #ddd; display: none; }
+  #tuner.open { display: block; }
+  #tuner label { display: block; margin: 6px 0 1px; color: #aaa; }
+  #tuner input[type=range] { width: 100%; }
+  #tuner .v { color: #7fd1ff; }
+  #tuner input[type=color] { width: 100%; height: 26px; }
 </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
   <video id="src" playsinline muted></video>
   <div id="status">connecting…</div>
+  <div id="tuner">
+    <label>Key colour <span class="v" id="tv-color"></span></label>
+    <input type="color" id="t-color" />
+    <button id="t-pick" style="width:100%;margin-top:6px;padding:5px;border:0;border-radius:6px;background:#2a6;color:#fff;cursor:pointer;font:11px system-ui">🎨 Pick green from avatar</button>
+    <label>Similarity <span class="v" id="tv-sim"></span></label>
+    <input type="range" id="t-sim" min="0" max="0.6" step="0.005" />
+    <label>Smoothness <span class="v" id="tv-smo"></span></label>
+    <input type="range" id="t-smo" min="0" max="0.3" step="0.005" />
+    <label>Spill <span class="v" id="tv-spi"></span></label>
+    <input type="range" id="t-spi" min="0" max="0.3" step="0.005" />
+  </div>
 
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
   <script src="../chroma.js"></script>
@@ -41,17 +61,26 @@
     agentId = cfg.agentId;
     renderer = new ChromaKeyRenderer(cv, { keyColor: cfg.keyColor });
 
+    const muted = new URLSearchParams(location.search).get("muted") === "1";
     client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     client.on("user-published", async (user, mediaType) => {
-      // Only the avatar's video matters; ignore agent audio (keep it silent).
-      if (mediaType !== "video" || String(user.uid) !== String(cfg.avatarUid)) {
-        if (mediaType === "video") { await client.subscribe(user, "video"); }
+      if (mediaType === "audio") {
+        // Play the agent's TTS audio so the avatar is actually heard talking.
+        // (?muted=1 silences a column when you have several avatars at once.)
+        await client.subscribe(user, "audio");
+        if (!muted) user.audioTrack?.play();
+        return;
+      }
+      // The avatar's video is the one we chroma-key.
+      if (String(user.uid) !== String(cfg.avatarUid)) {
+        await client.subscribe(user, "video");
         return;
       }
       await client.subscribe(user, "video");
       src.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
       await src.play().catch(() => {});
       renderer.start(src);
+      autoKeyFromBackground();   // start from the real background green (tuner too)
       say(""); statusEl.classList.add("gone");
     });
     client.on("user-unpublished", (u, mt) => { if (mt === "video" && renderer) renderer.stop(); });
@@ -71,6 +100,80 @@
   }
   window.addEventListener("pagehide", stop);
   window.addEventListener("beforeunload", stop);
+
+  // Lock the key colour to the avatar's ACTUAL background green: sample the four
+  // frame corners (background, never subject) on real painted frames, and only
+  // apply once they're consistently green — retrying past black/loading frames.
+  // Falls back to the fixed key colour if the corners never look green or the
+  // frame can't be read.
+  const sampleCanvas = document.createElement("canvas");
+  function autoKeyFromBackground(tries = 0) {
+    const w = src.videoWidth, h = src.videoHeight;
+    if (!w || !h) { if (tries < 40) setTimeout(() => autoKeyFromBackground(tries+1), 150); return; }
+    sampleCanvas.width = w; sampleCanvas.height = h;
+    const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+    let cols;
+    try {
+      ctx.drawImage(src, 0, 0, w, h);
+      const pts = [[6,6],[w-7,6],[6,h-7],[w-7,h-7]];
+      cols = pts.map(([x,y]) => { const d = ctx.getImageData(x,y,1,1).data; return [d[0],d[1],d[2]]; });
+    } catch { console.log(`[${provider}] frame unreadable; using fixed ${renderer.keyHex}`); return; }
+    const greenish = c => c[1] > c[0]+12 && c[1] > c[2]+12 && c[1] > 40;
+    const avg = [0,1,2].map(i => Math.round(cols.reduce((s,c)=>s+c[i],0)/4));
+    const consistent = cols.every(c => Math.abs(c[0]-avg[0])<28 && Math.abs(c[1]-avg[1])<28 && Math.abs(c[2]-avg[2])<28);
+    if (cols.every(greenish) && consistent) {
+      const hex = "#" + avg.map(n => n.toString(16).padStart(2,"0")).join("");
+      renderer.setKeyColor(hex);
+      console.log(`[${provider}] keyed to sampled green ${hex}`);
+      if (tuner) { document.getElementById("t-color").value = hex; document.getElementById("tv-color").textContent = hex; }
+    } else if (tries < 30) {
+      setTimeout(() => autoKeyFromBackground(tries+1), 200);   // wait for a stable green frame
+    } else {
+      console.log(`[${provider}] corners not consistently green; using fixed ${renderer.keyHex}`);
+    }
+  }
+
+  // Optional tuner (?tune=1)
+  const tunerOpen = new URLSearchParams(location.search).get("tune") === "1";
+  let tuner = null;
+  if (tunerOpen) {
+    tuner = document.getElementById("tuner"); tuner.classList.add("open");
+    const el = id => document.getElementById(id);
+    const bind = (rid, vid, prop, dp) => {
+      const wait = setInterval(() => {
+        if (!renderer) return; clearInterval(wait);
+        el(rid).value = renderer[prop]; el(vid).textContent = (+renderer[prop]).toFixed(dp);
+        el(rid).addEventListener("input", e => { renderer[prop] = +e.target.value; el(vid).textContent = (+e.target.value).toFixed(dp); });
+      }, 100);
+    };
+    const applyColor = hex => { renderer.setKeyColor(hex); el("t-color").value = hex; el("tv-color").textContent = hex; };
+    const waitC = setInterval(() => {
+      if (!renderer) return; clearInterval(waitC);
+      el("t-color").value = renderer.keyHex;
+      el("t-color").addEventListener("input", e => applyColor(e.target.value));
+    }, 100);
+    // Eyedropper: native picker (Chrome/Edge), else click the avatar to sample.
+    el("t-pick").addEventListener("click", async () => {
+      if (window.EyeDropper) {
+        try { const { sRGBHex } = await new EyeDropper().open(); applyColor(sRGBHex); } catch {}
+      } else {
+        el("t-pick").textContent = "click the avatar…";
+        cv.style.pointerEvents = "auto";
+        cv.addEventListener("click", ev => {
+          const r = cv.getBoundingClientRect();
+          // map click -> source-video pixel (canvas shows the frame stretched to its box)
+          const x = Math.round((ev.clientX - r.left) / r.width * (src.videoWidth || cv.width));
+          const y = Math.round((ev.clientY - r.top) / r.height * (src.videoHeight || cv.height));
+          const c = document.createElement("canvas"); c.width = src.videoWidth; c.height = src.videoHeight;
+          const ctx = c.getContext("2d"); ctx.drawImage(src, 0, 0);
+          const d = ctx.getImageData(Math.max(0,x), Math.max(0,y), 1, 1).data;
+          applyColor("#" + [d[0],d[1],d[2]].map(n => n.toString(16).padStart(2,"0")).join(""));
+          el("t-pick").textContent = "🎨 Pick green from avatar"; cv.style.pointerEvents = "none";
+        }, { once: true });
+      }
+    });
+    bind("t-sim","tv-sim","similarity",3); bind("t-smo","tv-smo","smoothness",3); bind("t-spi","tv-spi","spill",3);
+  }
 
   start();
   </script>

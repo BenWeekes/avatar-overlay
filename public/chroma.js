@@ -23,10 +23,13 @@
     constructor(canvas, opts = {}) {
       this.canvas = canvas;
       const gl = this.gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false });
+      // Tuned defaults (demo): clears the green around hair on the current #6B9E82
+      // background. A muted green sits close to some fabric tones, so a little
+      // clothing can go transparent — a more saturated bg colour would fix that.
       this.setKeyColor(opts.keyColor || "#6B9E82");
-      this.similarity = opts.similarity ?? 0.12;
-      this.smoothness = opts.smoothness ?? 0.08;
-      this.spill = opts.spill ?? 0.10;
+      this.similarity = opts.similarity ?? 0.08;
+      this.smoothness = opts.smoothness ?? 0.075;
+      this.spill = opts.spill ?? 0.08;
       this._running = false;
       const comp = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); return sh; };
       const p = this.program = gl.createProgram();
@@ -70,6 +73,7 @@
     stop() { this._running = false; }
     setKeyColor(hex) {
       hex = hex.replace(/^#/, "");
+      this.keyHex = "#" + hex;
       this.keyColor = [parseInt(hex.slice(0,2),16)/255, parseInt(hex.slice(2,4),16)/255, parseInt(hex.slice(4,6),16)/255];
     }
   }

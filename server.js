@@ -53,6 +53,7 @@ function agentPayload(provider, channel) {
       agent_rtc_uid: String(UID_AGENT),
       remote_rtc_uids: [String(UID_VIEWER)],
       advanced_features: { enable_rtm: false },
+      idle_timeout: Number(E.IDLE_TIMEOUT || 30), // stop if no viewer in channel
       llm: {
         url: E.LLM_URL, api_key: E.LLM_API_KEY, style: "openai",
         params: { model: E.LLM_MODEL },
@@ -66,9 +67,32 @@ function agentPayload(provider, channel) {
         api_key: E.TTS_API_KEY, voice_id: E.TTS_VOICE_ID, base_url: E.TTS_BASE_URL } },
       avatar: avatarConfig(provider, token(channel, UID_AVATAR)),
       turn_detection: { config: { end_of_speech: { mode: "vad" } } },
-      parameters: { transcript: { enable: false } },
+      parameters: {
+        transcript: { enable: false },
+        // Silence reminder: after timeout_ms of no activity, action:"think" feeds
+        // `content` to the LLM so the agent generates and speaks a fresh line —
+        // keeps the avatar talking with no mic input. (range (0, 60000] ms)
+        silence_config: {
+          timeout_ms: Number(E.SILENCE_TIMEOUT_MS || 8000),
+          action: "think",
+          content: E.SILENCE_PROMPT ||
+            "The viewer is quiet. Say one short, upbeat sentence to keep the demo lively.",
+        },
+      },
     },
   };
+}
+
+// Hard cap on avatar session length to limit provider API spend. Every started
+// agent is force-stopped after MAX_SESSION_MS even if the tab stays open.
+const MAX_SESSION_MS = Number(E.MAX_SESSION_MS || 120000); // 2 min
+const stopTimers = new Map(); // agentId -> timeout
+
+async function stopAgent(agentId) {
+  const t = stopTimers.get(agentId);
+  if (t) { clearTimeout(t); stopTimers.delete(agentId); }
+  const { status } = await convoai(`/agents/${agentId}/leave`, "POST");
+  return status;
 }
 
 async function convoai(path, method, body) {
@@ -108,6 +132,11 @@ app.post("/api/start/:provider", async (req, res) => {
     let agentId = null;
     try { const j = JSON.parse(text); agentId = j.agent_id || j.agentId; } catch {}
     console.log(`[start ${provider}] channel=${channel} agent=${agentId} status=${status}`);
+    // Hard 2-min cap: force-stop even if the tab stays open (limits API spend).
+    if (agentId) stopTimers.set(agentId, setTimeout(() => {
+      console.log(`[auto-stop] ${provider} agent=${agentId} after ${MAX_SESSION_MS}ms`);
+      stopAgent(agentId).catch(() => {});
+    }, MAX_SESSION_MS));
     res.json({
       appId: E.AGORA_APP_ID, channel, uid: UID_VIEWER,
       token: token(channel, UID_VIEWER),
@@ -122,7 +151,7 @@ app.post("/api/start/:provider", async (req, res) => {
 app.post("/api/stop/:provider", async (req, res) => {
   const { agentId } = req.body || {};
   if (!agentId) return res.status(400).json({ error: "agentId required" });
-  const { status } = await convoai(`/agents/${agentId}/leave`, "POST");
+  const status = await stopAgent(agentId);
   console.log(`[stop] agent=${agentId} status=${status}`);
   res.json({ ok: status < 300, status });
 });

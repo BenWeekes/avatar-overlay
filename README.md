@@ -22,14 +22,81 @@ know what to configure.
 
 - **Anam / LemonSlice** — the server starts an Agora **ConvoAI** agent whose avatar
   video is published into a channel on a solid **green** background. The browser
-  joins the channel, subscribes to the avatar video, and a WebGL shader keys the
-  green out (`public/chroma.js`). Both use the **same green** so one key colour
-  works for both. The agent greets once, then idles. No mic is used.
+  joins the channel, subscribes to the avatar video + audio, and a WebGL shader
+  keys the green out (`public/chroma.js`). Both use the **same green** so one key
+  colour works for both. The agent greets on join, then a `silence_config` prompt
+  makes it speak a fresh line every few seconds so it keeps talking.
 - **Trulience** — a self-contained iframe (`connect=true` so it auto-loads and
   idles, `micOff`/`speakerOff`, chat UI hidden). No server support needed.
 
 The provider keys live in **`.env`** (gitignored). `.env.example` lists every
 variable name.
+
+## Embedding each provider
+
+The three providers use two different embedding techniques. This is the part to
+copy into your own page.
+
+### Trulience — pure iframe (no server)
+
+Trulience renders and idles itself; you just embed a transparent iframe:
+
+```html
+<iframe
+  src="https://www.trulience.com/avatar/AVATAR_ID?connect=true&micOff=true&speakerOff=true&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true&dialPageBackground=transparent&disableDragging=true&disablePanels=true"
+  allow="autoplay; encrypted-media; fullscreen"
+  allowtransparency="true"
+  style="width:100%;height:100%;border:0;background:transparent"></iframe>
+```
+
+- `connect=true` auto-loads the avatar and **skips the dial/join screen**.
+- `micOff`/`speakerOff` — no mic prompt, silent.
+- Add `&agora_agent_endpoint=<url>` to have it talk to an Agora agent instead of idling.
+
+### Anam & LemonSlice — Agora ConvoAI avatar + chroma key
+
+These don't have a drop-in iframe. You run a ConvoAI **agent** whose avatar is
+published into an Agora channel on a green background, then key the green out in
+the browser. Two steps:
+
+**1) Server starts the agent** (`POST …/conversational-ai-agent/v2/projects/{appid}/join`,
+`Authorization: Basic <customerId:secret>`). The avatar block is the provider-specific bit:
+
+```jsonc
+// Anam
+"avatar": { "vendor": "anam", "enable": true, "params": {
+  "api_key": ANAM_API_KEY, "avatar_id": ANAM_AVATAR_ID,
+  "agora_uid": "102", "agora_token": <token for uid 102>,
+  "sample_rate": 24000, "video_encoding": "AV1" } }
+
+// LemonSlice (generic vendor)
+"avatar": { "vendor": "generic", "enable": true, "params": {
+  "api_key": LEMONSLICE_API_KEY, "avatar_id": <public image URL>,
+  "api_base_url": "https://lemonslice.com/api/liveai/agora",
+  "agora_uid": "102", "agora_token": <token for uid 102>,
+  "background_color": "6B9E82",   // the green we key out
+  "quality": "high", "version": "v1", "video_encoding": "H264", "aspect_ratio": "1x1" } }
+```
+
+The rest of the `properties` block (channel, token, `agent_rtc_uid`, `llm`, `tts`,
+`asr`, `greeting_message`, `silence_config`) is the same for both — see
+`server.js` `agentPayload()`.
+
+**2) Browser joins the channel and keys the green** — subscribe to the avatar
+video (uid 102), feed it through the shader, draw to a transparent canvas:
+
+```js
+client.on("user-published", async (user, mediaType) => {
+  if (mediaType === "video" && String(user.uid) === "102") {
+    await client.subscribe(user, "video");
+    srcVideo.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+    renderer.start(srcVideo);          // ChromaKeyRenderer -> transparent <canvas>
+  }
+  if (mediaType === "audio") { await client.subscribe(user, "audio"); user.audioTrack.play(); }
+});
+```
+
+Full working version: `public/providers/agora.html` + `public/chroma.js`.
 
 ## Setup
 
@@ -77,9 +144,26 @@ in `LEMONSLICE_AVATAR_ID` (face images are gitignored here on purpose).
 
 ## Tuning the chroma key
 
-If the green isn't fully removed (or the subject's edges look chewed), adjust
-`similarity` / `smoothness` / `spill` in `public/chroma.js` (the `ChromaKeyRenderer`
-defaults), or `AVATAR_KEY_COLOR` to match your avatars' actual green.
+Each avatar iframe **auto-samples** the background green from the frame corners on
+load, so it usually keys correctly with no work. To fine-tune, open a provider
+iframe with **`?tune=1`**:
+
+```
+…/providers/agora.html?provider=anam&tune=1
+…/providers/agora.html?provider=lemon&tune=1
+```
+
+A panel appears with a colour picker, a **🎨 Pick green from avatar** eyedropper
+(native picker on Chrome/Edge), and `similarity` / `smoothness` / `spill` sliders.
+Dial it in over the live avatar, then bake the values into the `ChromaKeyRenderer`
+defaults in `public/chroma.js`.
+
+- **similarity** ↑ removes more green (too high eats hair/skin)
+- **smoothness** = edge softness · **spill** = de-green colour bleeding onto edges
+
+Current demo defaults: `similarity 0.08 · smoothness 0.075 · spill 0.08` on `#6B9E82`.
+A muted green sits close to some fabric tones (a little clothing can go
+transparent); a **more saturated** background green keys far cleaner.
 
 ## Files
 
@@ -92,8 +176,14 @@ public/chroma.js              WebGL chroma-key renderer
 .env.example                  All variable names (no values)
 ```
 
-## Notes
+## Keeping them talking & limiting cost
 
-- ConvoAI agents cost money while running; the page stops its agents on unload
-  (`/api/stop`), and they also idle-timeout server-side.
+- **Greeting + keep-talking:** `llm.greeting_message` fires on join; `silence_config`
+  (`{ timeout_ms, action:"think", content }` in `properties.parameters`) makes the
+  LLM generate and speak a new line after `SILENCE_TIMEOUT_MS` (default 8s) of
+  silence. Tune with `SILENCE_TIMEOUT_MS` / `SILENCE_PROMPT`.
+- **Cost caps:** ConvoAI agents bill while running, so the server force-stops every
+  agent after `MAX_SESSION_MS` (default **2 min**) even if the tab stays open, the
+  page stops its agent on unload (`/api/stop`), and `idle_timeout` (30s) stops it if
+  the viewer leaves.
 - WebRTC needs HTTPS in production (localhost is exempt for dev).
