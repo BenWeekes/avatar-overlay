@@ -14,7 +14,8 @@ know what to configure.
 ┌──────────────── full-screen background video ────────────────┐
 │   Provider 1    │    Provider 2    │       Provider 3         │
 │   Anam          │    LemonSlice    │       Trulience          │
-│  (Agora+chroma) │   (Agora+chroma) │       (iframe)           │
+│   <iframe>      │    <iframe>      │       <iframe>           │  ← same embed shape
+│   Agora+chroma  │    Agora+chroma  │       hosted avatar      │  ← differs inside
 └───────────────────────────────────────────────────────────────┘
 ```
 
