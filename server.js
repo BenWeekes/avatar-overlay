@@ -108,13 +108,13 @@ async function convoai(path, method, body) {
 
 // Non-secret client config (video id, Trulience embed, key colour).
 // Trulience renders client-side; voice comes from an Agora ConvoAI agent it dials
-// via agora_endpoint. With an endpoint set it should be AUDIBLE (no speakerOff);
+// via agora_agent_endpoint. With an endpoint set it should be AUDIBLE (no speakerOff);
 // with none it idles silently.
 app.get("/api/config", (_req, res) => {
   const t = E.TRULIENCE_AVATAR_ID;
   const ep = E.TRULIENCE_AGENT_ENDPOINT;
   const audio = ep ? "&micOff=true" : "&micOff=true&speakerOff=true";
-  const agent = ep ? `&agora_endpoint=${encodeURIComponent(ep)}` : "";
+  const agent = ep ? `&agora_agent_endpoint=${encodeURIComponent(ep)}` : "";
   res.json({
     ytVideoId: E.YT_VIDEO_ID,
     keyColor: "#" + (E.AVATAR_KEY_COLOR || "6B9E82").replace(/^#/, ""),
