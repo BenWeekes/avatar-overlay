@@ -15,7 +15,8 @@ know what to configure.
 │   Provider 1    │    Provider 2    │       Provider 3         │
 │   Anam          │    LemonSlice    │       Trulience          │
 │   <iframe>      │    <iframe>      │       <iframe>           │  ← same embed shape
-│   Agora+chroma  │    Agora+chroma  │       hosted avatar      │  ← differs inside
+│   Agora video   │    Agora video   │   client render,         │
+│   + chroma key   │    + chroma key   │   voice via Agora        │  ← differs inside
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -27,8 +28,10 @@ know what to configure.
   keys the green out (`public/chroma.js`). Both use the **same green** so one key
   colour works for both. The agent greets on join, then a `silence_config` prompt
   makes it speak a fresh line every few seconds so it keeps talking.
-- **Trulience** — a self-contained iframe (`connect=true` so it auto-loads and
-  idles, `micOff`/`speakerOff`, chat UI hidden). No server support needed.
+- **Trulience** — the avatar renders **client-side** inside its iframe; its
+  **voice comes from an Agora ConvoAI agent** it dials via `agora_endpoint` (a
+  lambda that provisions the agent). `connect=true` auto-loads it and chat UI is
+  hidden. With no `agora_endpoint` it just idles silently.
 
 The provider keys live in **`.env`** (gitignored). `.env.example` lists every
 variable name.
@@ -37,25 +40,28 @@ variable name.
 
 The host page embeds all three the **same way** — one `<iframe>` per third
 (`index.html` → `COLUMNS`). What differs is only what runs *inside* each iframe,
-because the providers expose different things: Trulience hosts a ready-made avatar
-iframe, while Anam/LemonSlice give you an Agora avatar stream you render yourself.
-Both wrappers live in `public/providers/`. This is the part to copy into your page.
+because the providers expose different things: **Trulience** renders the avatar
+client-side in its iframe and gets its **voice from an Agora agent** (dialled via
+`agora_endpoint`); **Anam/LemonSlice** give you a raw Agora avatar video that you
+render and chroma-key yourself. Both wrappers live in `public/providers/`.
 
-### Trulience — pure iframe (no server)
+### Trulience — client-side iframe, voice via Agora (no server needed)
 
-Trulience renders and idles itself; you just embed a transparent iframe:
+Trulience renders the avatar in its own iframe; add `agora_endpoint` so it dials an
+Agora ConvoAI agent for voice:
 
 ```html
 <iframe
-  src="https://www.trulience.com/avatar/AVATAR_ID?connect=true&micOff=true&speakerOff=true&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true&dialPageBackground=transparent&disableDragging=true&disablePanels=true"
+  src="https://www.trulience.com/avatar/AVATAR_ID?connect=true&micOff=true&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true&dialPageBackground=transparent&disableDragging=true&disablePanels=true&agora_endpoint=<AGENT_LAMBDA_URL>"
   allow="autoplay; encrypted-media; fullscreen"
   allowtransparency="true"
   style="width:100%;height:100%;border:0;background:transparent"></iframe>
 ```
 
 - `connect=true` auto-loads the avatar and **skips the dial/join screen**.
-- `micOff`/`speakerOff` — no mic prompt, silent.
-- Add `&agora_agent_endpoint=<url>` to have it talk to an Agora agent instead of idling.
+- `agora_endpoint` = a URL that provisions the Agora agent → gives the avatar its voice.
+- `micOff` = don't capture the viewer's mic. Drop `agora_endpoint` (and add
+  `speakerOff`) to have it idle silently instead.
 
 ### Anam & LemonSlice — Agora ConvoAI avatar + chroma key
 
