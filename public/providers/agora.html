@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Avatar</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%;
+        object-fit: contain; object-position: bottom center; }
+  #src { position: absolute; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+  #status { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center;
+    font: 12px system-ui, sans-serif; color: rgba(255,255,255,.75);
+    text-shadow: 0 1px 3px #000; pointer-events: none; }
+  #status.gone { display: none; }
+</style>
+</head>
+<body>
+  <canvas id="cv"></canvas>
+  <video id="src" playsinline muted></video>
+  <div id="status">connecting…</div>
+
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+  <script src="../chroma.js"></script>
+  <script>
+  const provider = new URLSearchParams(location.search).get("provider"); // anam | lemon
+  const cv = document.getElementById("cv");
+  const src = document.getElementById("src");
+  const statusEl = document.getElementById("status");
+  const say = m => { statusEl.textContent = m; console.log(`[${provider}]`, m); };
+
+  let client = null, renderer = null, agentId = null;
+
+  async function start() {
+    let cfg;
+    try {
+      const r = await fetch(`../api/start/${provider}`, { method: "POST" });
+      cfg = await r.json();
+      if (!r.ok) throw new Error(cfg.detail || cfg.error || r.statusText);
+    } catch (e) { say("start failed: " + e.message); return; }
+    agentId = cfg.agentId;
+    renderer = new ChromaKeyRenderer(cv, { keyColor: cfg.keyColor });
+
+    client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    client.on("user-published", async (user, mediaType) => {
+      // Only the avatar's video matters; ignore agent audio (keep it silent).
+      if (mediaType !== "video" || String(user.uid) !== String(cfg.avatarUid)) {
+        if (mediaType === "video") { await client.subscribe(user, "video"); }
+        return;
+      }
+      await client.subscribe(user, "video");
+      src.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+      await src.play().catch(() => {});
+      renderer.start(src);
+      say(""); statusEl.classList.add("gone");
+    });
+    client.on("user-unpublished", (u, mt) => { if (mt === "video" && renderer) renderer.stop(); });
+
+    try {
+      await client.join(cfg.appId, cfg.channel, cfg.token, cfg.uid);
+      say("waiting for avatar…");
+    } catch (e) { say("join failed: " + e.message); }
+  }
+
+  async function stop() {
+    try { if (client) await client.leave(); } catch {}
+    if (agentId) {
+      navigator.sendBeacon(`../api/stop/${provider}`,
+        new Blob([JSON.stringify({ agentId })], { type: "application/json" }));
+    }
+  }
+  window.addEventListener("pagehide", stop);
+  window.addEventListener("beforeunload", stop);
+
+  start();
+  </script>
+</body>
+</html>

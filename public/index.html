@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Avatar Overlay Demo</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #fff; }
+
+  /* Layer 0 — full-screen background video */
+  #bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #000; }
+  #bg iframe { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 100vw; height: 56.25vw; min-width: 177.78vh; min-height: 100vh;
+    border: 0; pointer-events: none; }
+
+  /* Layer 1 — three equal thirds, each an avatar iframe */
+  #stage { position: fixed; inset: 0; z-index: 1; display: grid;
+    grid-template-columns: repeat(3, 1fr); }
+  .col { position: relative; height: 100%; overflow: hidden; }
+  .col + .col { box-shadow: inset 1px 0 0 rgba(255,255,255,0.08); }
+  .col iframe { position: absolute; inset: 0; width: 100%; height: 100%;
+    border: 0; background: transparent; }
+  .label { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
+    padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    letter-spacing: .3px; background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,.15); pointer-events: none; }
+</style>
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="stage"></div>
+
+  <script>
+  // Every provider is embedded the SAME way — a local iframe in its own third —
+  // so the integration pattern is identical across all three.
+  const COLUMNS = [
+    { label: "Provider 1", src: "providers/agora.html?provider=anam" },
+    { label: "Provider 2", src: "providers/agora.html?provider=lemon" },
+    { label: "Provider 3", src: "providers/trulience.html" },
+  ];
+
+  fetch("api/config").then(r => r.json()).then(cfg => {
+    // Background video
+    const yt = document.createElement("iframe");
+    yt.src = `https://www.youtube.com/embed/${cfg.ytVideoId}`
+      + `?autoplay=1&mute=1&controls=0&loop=1&playlist=${cfg.ytVideoId}`
+      + `&modestbranding=1&rel=0&playsinline=1&disablekb=1&iv_load_policy=3`;
+    yt.allow = "autoplay; encrypted-media; picture-in-picture";
+    document.getElementById("bg").appendChild(yt);
+
+    // Three avatar columns
+    const stage = document.getElementById("stage");
+    COLUMNS.forEach(c => {
+      const col = document.createElement("div");
+      col.className = "col";
+      const label = document.createElement("div");
+      label.className = "label"; label.textContent = c.label;
+      const frame = document.createElement("iframe");
+      frame.src = c.src;
+      frame.allow = "autoplay; encrypted-media; fullscreen";
+      frame.setAttribute("allowtransparency", "true");
+      col.appendChild(frame); col.appendChild(label);
+      stage.appendChild(col);
+    });
+  }).catch(e => { document.body.insertAdjacentHTML("beforeend",
+    `<div style="position:fixed;top:12px;left:12px;z-index:9">config load failed: ${e}</div>`); });
+  </script>
+</body>
+</html>

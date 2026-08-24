@@ -1,0 +1,18 @@
+# secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# node
+node_modules/
+npm-debug.log*
+*.log
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# demo avatar source images (host your own; set LEMONSLICE_AVATAR_ID)
+public/assets/*.jpg
+public/assets/*.png
