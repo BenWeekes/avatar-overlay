@@ -34,8 +34,11 @@ variable name.
 
 ## Embedding each provider
 
-The three providers use two different embedding techniques. This is the part to
-copy into your own page.
+The host page embeds all three the **same way** — one `<iframe>` per third
+(`index.html` → `COLUMNS`). What differs is only what runs *inside* each iframe,
+because the providers expose different things: Trulience hosts a ready-made avatar
+iframe, while Anam/LemonSlice give you an Agora avatar stream you render yourself.
+Both wrappers live in `public/providers/`. This is the part to copy into your page.
 
 ### Trulience — pure iframe (no server)
 
