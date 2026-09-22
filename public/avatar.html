@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{background:#0d0d0f;height:100vh;display:flex;flex-direction:column;overflow:hidden;
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eee;}
+  .bar{padding:8px;display:flex;justify-content:center;align-items:center;gap:12px;flex:0 0 auto;}
+  .bar a{border:0;border-radius:8px;padding:9px 18px;font-weight:600;font-size:14px;background:#fff;color:#111;text-decoration:none;}
+  .bar .name{color:#bbb;font-weight:600;}
+  .stage{flex:1 1 auto;min-height:0;display:grid;place-items:center;padding:0 8px 8px;}
+  video{max-width:100%;max-height:100%;object-fit:contain;background:#000;border-radius:10px;}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <a href="/avatar-overlay/avatar-grid.html">Grid</a>
+    <span class="name" id="name"></span>
+  </div>
+  <div class="stage"><video id="v" controls autoplay loop playsinline preload="auto"></video></div>
+<script>
+  const q=new URLSearchParams(location.search);
+  const p=(q.get('p')||'tavus').replace(/[^a-z]/g,'');
+  const names={tavus:'Tavus',lemon:'LemonSlice',anam:'Anam',proto:'Protoface'};
+  const v=document.getElementById('v');
+  document.getElementById('name').textContent=names[p]||p;
+  document.title=names[p]||p;
+  v.src='/avatar-overlay/grid-'+p+'.mp4';
+  v.muted=false; v.volume=1;
+  // try to autoplay with sound; if the browser blocks it, the native Play control does it
+  v.play().catch(()=>{});
+</script>
+</body>
+</html>

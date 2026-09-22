@@ -16,3 +16,6 @@ npm-debug.log*
 # demo avatar source images (host your own; set LEMONSLICE_AVATAR_ID)
 public/assets/*.jpg
 public/assets/*.png
+
+# recorded provider clips (regenerate via avatar-direct)
+public/grid-*.mp4
