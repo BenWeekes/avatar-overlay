@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Upper-Body Comparison — Score</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:14px;gap:14px;}
+  h1{font-size:17px;margin:2px 0 0;font-weight:700;}
+  .sub{color:#9aa;font-size:13px;margin:0;text-align:center;}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:1100px;}
+  .col{background:#17171b;border:1px solid #2a2a30;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .col .vname{font-weight:700;font-size:14px;}
+  .col video,.col .soon{width:100%;aspect-ratio:16/9;max-height:52vh;background:#000;border-radius:10px;object-fit:contain;}
+  .col .soon{display:grid;place-items:center;color:#777;font-size:14px;font-weight:600;border:1px dashed #333;}
+  .axis{display:flex;align-items:center;gap:10px;}
+  .axis .nm{flex:0 0 190px;font-size:12px;color:#cdd;font-weight:600;}
+  .axis .nm small{display:block;color:#778;font-weight:500;font-size:10.5px;}
+  input[type=range]{width:100%;accent-color:#4a7dff;height:16px;}
+  .axis .val{color:#8fb8ff;font-variant-numeric:tabular-nums;font-size:12px;width:16px;text-align:right;}
+  .foot{display:flex;flex-wrap:wrap;gap:10px;align-items:end;justify-content:center;width:100%;max-width:1100px;margin-top:4px;}
+  .foot .email{flex:1 1 260px;max-width:360px;}
+  label.elab{display:block;font-size:12px;color:#9aa;margin:0 0 3px 2px;font-weight:600;}
+  input[type=email]{width:100%;padding:9px 10px;border-radius:8px;border:1px solid #33333b;background:#101014;color:#eee;font-size:14px;}
+  input[type=email]:focus{outline:none;border-color:#4a7dff;}
+  button{border:0;border-radius:9px;padding:11px 24px;font-weight:700;font-size:15px;cursor:pointer;background:#4a7dff;color:#fff;}
+  button:disabled{opacity:.5;cursor:default;}
+  .msg{font-size:14px;min-height:18px;align-self:center;}.ok{color:#5fd08a;}.err{color:#ff7a7a;}
+  .hint{color:#9aa;font-size:12px;margin:2px 2px 0;text-align:center;}
+  @media (max-width:760px){.pair{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+  <h1>Avatar Upper-Body Comparison</h1>
+  <p class="sub">Press play on each clip (sound on), then score the body animation 0–10.</p>
+  <div class="pair" id="pair"></div>
+  <div class="foot">
+    <div class="email">
+      <label class="elab" for="email">Your email</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <button id="submit">Submit scores</button>
+    <span class="msg" id="msg"></span>
+  </div>
+  <div class="hint">Both clips are the same spoken script. Quality = how good the body motion looks; Sync = how well the body motion fits the speech.</div>
+
+<script>
+  const LANG="en-body";
+  // the two vendors in this upper-body comparison (blind numbering matches the main grid)
+  const TILES=[{v:"Vendor 2",file:"/avatar-compare/media/body-2.mp4"},
+               {v:"Vendor 6",file:"/avatar-compare/media/body-6.mp4"}];
+  const AXES=[{k:"body_quality",nm:"Body animation quality",sub:"how good the body motion looks"},
+              {k:"body_sync",nm:"Body sync with speech",sub:"body motion fits the words"}];
+  const pair=document.getElementById('pair');
+  const state={};
+  TILES.forEach(t=>{
+    state[t.v]={}; AXES.forEach(a=>state[t.v][a.k]=5);
+    const col=document.createElement('div'); col.className='col';
+    const nm=document.createElement('div'); nm.className='vname'; nm.textContent=t.v;
+    const vid=document.createElement('video'); vid.src=t.file; vid.controls=true; vid.playsInline=true; vid.loop=true; vid.preload="metadata";
+    vid.addEventListener('error',()=>{ const s=document.createElement('div'); s.className='soon'; s.textContent=t.v+' — coming soon'; vid.replaceWith(s); });
+    col.append(nm,vid);
+    AXES.forEach(a=>{
+      const row=document.createElement('div'); row.className='axis';
+      const lab=document.createElement('div'); lab.className='nm'; lab.innerHTML=a.nm+'<small>'+a.sub+'</small>';
+      const r=document.createElement('input'); r.type='range'; r.min=0;r.max=10;r.step=1;r.value=5;
+      const val=document.createElement('span'); val.className='val'; val.textContent='5';
+      r.addEventListener('input',()=>{state[t.v][a.k]=Number(r.value); val.textContent=r.value;});
+      row.append(lab,r,val); col.append(row);
+    });
+    pair.append(col);
+  });
+
+  const msg=document.getElementById('msg'), btn=document.getElementById('submit');
+  function setMsg(t,cls){msg.textContent=t;msg.className='msg '+(cls||'');}
+  btn.onclick=async()=>{
+    const email=document.getElementById('email').value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setMsg('Please enter a valid email.','err');
+    btn.disabled=true; setMsg('Submitting…');
+    try{
+      const r=await fetch('/simple-backend/vendor-poll',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({email,lang:LANG,scores:state})});
+      const d=await r.json();
+      if(r.ok){ setMsg('Thanks! Your scores were saved. ✓','ok'); }
+      else { setMsg(d.error||'Something went wrong.','err'); btn.disabled=false; }
+    }catch(e){ setMsg('Network error — please try again.','err'); btn.disabled=false; }
+  };
+</script>
+</body>
+</html>

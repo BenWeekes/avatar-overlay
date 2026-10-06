@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agora Sales Avatar (Kiosk)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+</style>
+</head>
+<body>
+  <script>
+  // Kiosk: transparent Trulience avatar on black, mic LIVE, but no on-screen
+  // buttons. hide* flags are read by the Trulience player from the URL (same as
+  // hideChatInput). agora_profile picks our voice-only Agora/IFA sales agent.
+  var AVATAR_ID = "6038809566353378449";
+  var AGENT_ENDPOINT = "https://convoai-demo.agora.io/simple-backend/start-agent";
+  var PROFILE = "EVENTSALES";
+  var src = "https://www.trulience.com/avatar/" + AVATAR_ID
+    + "?connect=true"
+    // hide every on-screen control (hangup, mic, speaker, fullscreen, transcripts, etc.)
+    + "&hideHangUpButton=true&hideMicButton=true&hideSpeakerButton=true"
+    + "&hideFS=true&hideTranscriptsButton=true&hidePhotoUpload=true&hideWebcamPreview=true"
+    + "&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true"
+    + "&dialPageBackground=transparent&disableDragging=true&disablePanels=true"
+    + "&controllerEndpoint=" + encodeURIComponent("wss://wvc-eu-west-2-dev-01.trulience.com")
+    + "&agora_agent_endpoint=" + encodeURIComponent(AGENT_ENDPOINT)
+    + "&agora_profile=" + encodeURIComponent(PROFILE);
+  var f = document.createElement("iframe");
+  f.src = src;
+  f.allow = "autoplay; encrypted-media; fullscreen; microphone";
+  f.setAttribute("allowtransparency", "true");
+  document.body.appendChild(f);
+  </script>
+</body>
+</html>

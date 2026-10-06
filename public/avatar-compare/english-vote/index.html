@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Provider Comparison — Vote</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:12px;gap:12px;}
+  h1{font-size:17px;margin:2px 0 0;font-weight:700;}
+  .sub{color:#9aa;font-size:13px;margin:0;text-align:center;}
+  video{width:100%;max-width:1100px;max-height:62vh;background:#000;border-radius:10px;}
+  .panel{width:100%;max-width:1100px;background:#17171b;border:1px solid #2a2a30;border-radius:12px;padding:14px 16px;}
+  .ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .rank label{display:block;font-size:12px;color:#9aa;margin:0 0 3px 2px;font-weight:600;}
+  select,input{width:100%;padding:9px 10px;border-radius:8px;border:1px solid #33333b;background:#101014;color:#eee;font-size:14px;}
+  select:focus,input:focus{outline:none;border-color:#4a7dff;}
+  .foot{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:12px;}
+  .foot .email{flex:1 1 240px;}
+  button{border:0;border-radius:9px;padding:11px 24px;font-weight:700;font-size:15px;cursor:pointer;background:#4a7dff;color:#fff;}
+  button:disabled{opacity:.5;cursor:default;}
+  .msg{font-size:14px;min-height:18px;}
+  .ok{color:#5fd08a;}.err{color:#ff7a7a;}
+  .hint{color:#9aa;font-size:12px;margin:8px 2px 0;}
+</style>
+</head>
+<body>
+  <h1>Avatar Provider Comparison</h1>
+  <p class="sub" id="vendorlist"></p>
+  <video id="v" src="/avatar-compare/media/en-mux.mp4" controls autoplay loop playsinline preload="auto"></video>
+
+  <div class="panel">
+    <div class="ranks" id="ranks"></div>
+    <div class="foot">
+      <div class="email">
+        <label for="email" style="display:block;font-size:12px;color:#9aa;margin:0 0 3px 2px;font-weight:600;">Your email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button id="submit">Submit ranking</button>
+      <span class="msg" id="msg"></span>
+    </div>
+    <div class="hint">Each vendor can be picked once. Best = your favourite lip-sync / most natural.</div>
+  </div>
+
+<script>
+  const LANG="en";
+  const NAMES=["Tavus","LemonSlice","Anam","Protoface","HeyGen","Trulience"];
+  for(let i=NAMES.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[NAMES[i],NAMES[j]]=[NAMES[j],NAMES[i]];}
+  document.getElementById('vendorlist').innerHTML='Vendors in this comparison (random order): <b>'+NAMES.join(' · ')+'</b>';
+
+  const PLACES=["Best experience","2nd best","3rd","4th","5th","Worst"];
+  const VENDORS=["Vendor 1","Vendor 2","Vendor 3","Vendor 4","Vendor 5","Vendor 6"];
+  const ranks=document.getElementById('ranks');
+  const selects=PLACES.map((place,i)=>{
+    const wrap=document.createElement('div'); wrap.className='rank';
+    const lab=document.createElement('label'); lab.textContent=(i+1)+'. '+place;
+    const sel=document.createElement('select');
+    sel.add(new Option('— choose —',''));
+    VENDORS.forEach(v=>sel.add(new Option(v,v)));
+    wrap.append(lab,sel); ranks.append(wrap);
+    sel.addEventListener('change',sync);
+    return sel;
+  });
+  function sync(){const chosen=selects.map(s=>s.value).filter(Boolean);selects.forEach(s=>{[...s.options].forEach(o=>{if(o.value)o.disabled=o.value!==s.value&&chosen.includes(o.value);});});}
+  const msg=document.getElementById('msg'), btn=document.getElementById('submit');
+  function setMsg(t,cls){msg.textContent=t;msg.className='msg '+(cls||'');}
+  btn.onclick=async()=>{
+    const email=document.getElementById('email').value.trim();
+    const ranking=selects.map(s=>s.value);
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setMsg('Please enter a valid email.','err');
+    if(ranking.some(r=>!r)) return setMsg('Please fill all six places.','err');
+    if(new Set(ranking).size!==6) return setMsg('Each vendor can be picked only once.','err');
+    btn.disabled=true; setMsg('Submitting…');
+    try{
+      const r=await fetch('/simple-backend/vendor-poll',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({email,ranking,lang:LANG})});
+      const d=await r.json();
+      if(r.ok){ setMsg('Thanks! Your ranking was saved. ✓','ok'); }
+      else { setMsg(d.error||'Something went wrong.','err'); btn.disabled=false; }
+    }catch(e){ setMsg('Network error — please try again.','err'); btn.disabled=false; }
+  };
+</script>
+</body>
+</html>

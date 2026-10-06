@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Provider Comparison — Score</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:12px;gap:12px;}
+  h1{font-size:17px;margin:2px 0 0;font-weight:700;}
+  .sub{color:#9aa;font-size:13px;margin:0;text-align:center;}
+  video{width:100%;max-width:1100px;max-height:60vh;background:#000;border-radius:10px;}
+  .panel{width:100%;max-width:1100px;background:#17171b;border:1px solid #2a2a30;border-radius:12px;padding:10px 16px;}
+  .vrow{display:grid;grid-template-columns:84px 1fr 1fr;gap:16px;align-items:center;padding:5px 4px;border-bottom:1px solid #22222a;}
+  .vrow:last-child{border-bottom:0;}
+  .vname{font-weight:700;font-size:14px;}
+  .axis{display:flex;align-items:center;gap:8px;}
+  .axis .val{color:#8fb8ff;font-variant-numeric:tabular-nums;font-size:12px;width:16px;text-align:right;}
+  input[type=range]{width:100%;accent-color:#4a7dff;height:16px;}
+  .head{display:grid;grid-template-columns:84px 1fr 1fr;gap:16px;font-size:11px;color:#778;font-weight:700;padding:0 4px 5px;text-transform:uppercase;letter-spacing:.04em;}
+  .head .sublab{display:inline;text-transform:none;letter-spacing:0;font-weight:500;color:#667;font-size:10px;margin-left:5px;}
+  .foot{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:14px;}
+  .foot .email{flex:1 1 240px;}
+  input[type=email]{width:100%;padding:9px 10px;border-radius:8px;border:1px solid #33333b;background:#101014;color:#eee;font-size:14px;}
+  input[type=email]:focus{outline:none;border-color:#4a7dff;}
+  label.elab{display:block;font-size:12px;color:#9aa;margin:0 0 3px 2px;font-weight:600;}
+  button{border:0;border-radius:9px;padding:11px 24px;font-weight:700;font-size:15px;cursor:pointer;background:#4a7dff;color:#fff;}
+  button:disabled{opacity:.5;cursor:default;}
+  .msg{font-size:14px;min-height:18px;}.ok{color:#5fd08a;}.err{color:#ff7a7a;}
+  .hint{color:#9aa;font-size:12px;margin:10px 2px 0;}
+</style>
+</head>
+<body>
+  <h1>Avatar Provider Comparison</h1>
+  <p class="sub" id="vendorlist"></p>
+  <video id="v" src="/avatar-compare/media/en-mux.mp4" controls autoplay loop playsinline preload="auto"></video>
+
+  <div class="panel">
+    <div class="head"><div>Vendor</div><div>Lip-sync <span class="sublab">mouth matches the words</span></div><div>Engagement <span class="sublab">realistic head &amp; face-muscle motion</span></div></div>
+    <div id="rows"></div>
+    <div class="foot">
+      <div class="email">
+        <label class="elab" for="email">Your email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <button id="submit">Submit scores</button>
+      <span class="msg" id="msg"></span>
+    </div>
+    <div class="hint">Rate each vendor 0–10 on both axes. Slide to score; you can leave any at 5 if unsure.</div>
+  </div>
+
+<script>
+  const LANG="en-scores";
+  const NAMES=["Tavus","LemonSlice","Anam","Protoface","HeyGen","Trulience"];
+  for(let i=NAMES.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[NAMES[i],NAMES[j]]=[NAMES[j],NAMES[i]];}
+  document.getElementById('vendorlist').innerHTML='Vendors in this comparison (random order): <b>'+NAMES.join(' · ')+'</b>';
+
+  const VENDORS=["Vendor 1","Vendor 2","Vendor 3","Vendor 4","Vendor 5","Vendor 6"];
+  const rows=document.getElementById('rows');
+  const state={};
+  VENDORS.forEach(v=>{
+    state[v]={lipsync:5,engagement:5};
+    const row=document.createElement('div'); row.className='vrow';
+    const mk=(axis)=>{
+      const wrap=document.createElement('div'); wrap.className='axis';
+      const r=document.createElement('input'); r.type='range'; r.min=0; r.max=10; r.step=1; r.value=5;
+      const val=document.createElement('span'); val.className='val'; val.textContent='5';
+      r.addEventListener('input',()=>{state[v][axis]=Number(r.value); val.textContent=r.value;});
+      wrap.append(r,val); return wrap;
+    };
+    const nm=document.createElement('div'); nm.className='vname'; nm.textContent=v;
+    row.append(nm, mk('lipsync'), mk('engagement'));
+    rows.append(row);
+  });
+
+  const msg=document.getElementById('msg'), btn=document.getElementById('submit');
+  function setMsg(t,cls){msg.textContent=t;msg.className='msg '+(cls||'');}
+  btn.onclick=async()=>{
+    const email=document.getElementById('email').value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setMsg('Please enter a valid email.','err');
+    btn.disabled=true; setMsg('Submitting…');
+    try{
+      const r=await fetch('/simple-backend/vendor-poll',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({email,lang:LANG,scores:state})});
+      const d=await r.json();
+      if(r.ok){ setMsg('Thanks! Your scores were saved. ✓','ok'); }
+      else { setMsg(d.error||'Something went wrong.','err'); btn.disabled=false; }
+    }catch(e){ setMsg('Network error — please try again.','err'); btn.disabled=false; }
+  };
+</script>
+</body>
+</html>

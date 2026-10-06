@@ -19,3 +19,20 @@ public/assets/*.png
 
 # recorded provider clips (regenerate via avatar-direct)
 public/grid-*.mp4
+public/grid2-*.mp4
+public/vendor-grid-mux*.mp4
+public/sing-*.mp4
+
+# all media under public/ — regenerable, served from the box (keep HTML only)
+public/**/*.mp4
+public/**/*.m4a
+public/**/*.wav
+public/**/*.webm
+public/**/*.jpg
+public/**/*.jpeg
+public/**/*.png
+public/**/*.gif
+public/**/*.mp3
+
+# poll responses — contains voter emails (PII), never commit
+vendor_poll.json

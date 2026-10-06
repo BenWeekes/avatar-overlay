@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agora Sales Avatar</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  /* Top 25% empty black, bottom 75% the Trulience avatar iframe. */
+  .layout { display: flex; flex-direction: column; height: 100%; background: #000; }
+  .spacer { flex: 0 0 25%; background: #000; }
+  .frame  { flex: 1 1 75%; position: relative; background: #000; }
+  .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <div class="spacer"></div>
+    <div class="frame">
+      <iframe
+        src="https://www.trulience.com/avatar/6038809566353378449?connect=true&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true&agora_agent_endpoint=https%3A%2F%2Fconvoai-demo.agora.io%2Fsimple-backend%2Fstart-agent&agora_profile=EVENTSALES"
+        allow="autoplay; encrypted-media; fullscreen; microphone"
+        allowtransparency="true"></iframe>
+    </div>
+  </div>
+</body>
+</html>

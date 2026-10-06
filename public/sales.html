@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agora Sales Avatar</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  /* Full-screen, transparent Trulience iframe on a pure-black page. */
+  iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+</style>
+</head>
+<body>
+  <script>
+  // Trulience renders the avatar client-side and dials our Agora ConvoAI agent
+  // (EVENTSALES — voice-only, Agora sales pitch + silence keep-talking) via
+  // agora_agent_endpoint. dialPageBackground=transparent lets the black page show
+  // through. Same embed params as the /avatar-overlay/ Trulience provider.
+  // Transparent bg is a per-avatar Trulience setting; 6038…9 is the avatar-overlay
+  // avatar configured for it. The profile is passed via Trulience's own agora_profile
+  // param (its SDK does url.searchParams.set('profile', agora_profile)) on a BARE
+  // agora_agent_endpoint — do NOT bake it into the path or Trulience's default wins.
+  var AVATAR_ID = "6038809566353378449";
+  var AGENT_ENDPOINT = "https://convoai-demo.agora.io/simple-backend/start-agent";
+  var PROFILE = "EVENTSALES";
+  var src = "https://www.trulience.com/avatar/" + AVATAR_ID
+    + "?connect=true"
+    + "&hideChatInput=true&hideChatHistory=true&hideLetsChatBtn=true"
+    + "&dialPageBackground=transparent&disableDragging=true&disablePanels=true"
+    + "&controllerEndpoint=" + encodeURIComponent("wss://wvc-eu-west-2-dev-01.trulience.com")
+    + "&agora_agent_endpoint=" + encodeURIComponent(AGENT_ENDPOINT)
+    + "&agora_profile=" + encodeURIComponent(PROFILE);
+  var f = document.createElement("iframe");
+  f.src = src;
+  f.allow = "autoplay; encrypted-media; fullscreen; microphone";
+  f.setAttribute("allowtransparency", "true");
+  document.body.appendChild(f);
+  </script>
+</body>
+</html>

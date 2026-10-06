@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Provider Comparison</title>
+<style>
+  :root{color-scheme:dark;--cols:3;--cw:440px;--ch:293px;}
+  *{box-sizing:border-box;}html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#eee;}
+  .bar{padding:12px;display:flex;justify-content:center;align-items:center;gap:10px;flex:0 0 auto;}
+  h1{font-size:16px;margin:0;font-weight:700;}
+  .bar button{background:transparent;color:#bbb;border:1px solid #333;border-radius:8px;padding:8px 18px;font-weight:600;font-size:14px;cursor:pointer;}
+  .bar button:hover{color:#fff;border-color:#555;}
+  .grid{display:grid;grid-template-columns:repeat(var(--cols),var(--cw));gap:10px;justify-content:center;padding:0 10px 16px;}
+  .cell{position:relative;width:var(--cw);height:var(--ch);background:#000;border-radius:10px;overflow:hidden;display:grid;place-items:center;}
+  .cell video{max-width:100%;max-height:100%;object-fit:contain;}
+  .hit{position:absolute;inset:0;z-index:1;cursor:pointer;}
+  .tag{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:6px;font-size:13px;font-weight:600;color:#fff;pointer-events:none;z-index:2;}
+  @media (max-width:1380px){:root{--cols:2;}}
+  @media (max-width:920px){:root{--cols:1;}}
+</style>
+</head>
+<body>
+  <div class="bar"><h1>Avatar Provider Comparison</h1><button id="restart">Restart All</button></div>
+  <div class="grid" id="grid"></div>
+<script>
+  const LANG="en";
+  const grid=document.getElementById('grid');
+  for(let n=1;n<=6;n++){
+    const cell=document.createElement('div'); cell.className='cell';
+    cell.innerHTML=`<span class="tag">Vendor ${n}</span>`
+      +`<video data-n="${n}" src="/avatar-compare/media/${LANG}-${n}.mp4" muted loop playsinline preload="auto"></video>`
+      +`<a class="hit" href="/avatar-compare/solo/?v=${n}&l=${LANG}" aria-label="Open Vendor ${n}"></a>`;
+    grid.append(cell);
+  }
+  const vids=[...document.querySelectorAll('video')];
+  function seekZero(v){return new Promise(res=>{const d=()=>{v.removeEventListener('seeked',d);res();};v.addEventListener('seeked',d);try{v.currentTime=0;}catch(e){d();}if(v.currentTime===0&&v.readyState>=2)d();});}
+  function ready(v){return v.readyState>=3?Promise.resolve():new Promise(res=>{const on=()=>{v.removeEventListener('canplaythrough',on);res();};v.addEventListener('canplaythrough',on);});}
+  let starting=false;
+  async function restart(){
+    if(starting)return;starting=true;
+    vids.forEach(v=>v.pause());
+    await Promise.all(vids.map(seekZero));
+    await Promise.all(vids.map(ready));
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    vids.forEach(v=>v.play().catch(()=>{}));
+    let k=0;const iv=setInterval(()=>{const t=Math.max(...vids.map(v=>v.currentTime));vids.forEach(v=>{if(t-v.currentTime>0.06){try{v.currentTime=t;}catch(e){}}});if(++k>=3)clearInterval(iv);},150);
+    starting=false;
+  }
+  let cnt=0;vids.forEach(v=>v.addEventListener('canplaythrough',()=>{if(++cnt>=vids.length)restart();},{once:true}));
+  setTimeout(restart,4000);
+  document.getElementById('restart').onclick=restart;
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LemonSlice Singing</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:14px;gap:12px;}
+  h1{font-size:17px;margin:0;font-weight:700;}
+  .pair{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;width:100%;max-width:1200px;}
+  video{width:100%;background:#000;border-radius:12px;max-height:80vh;}
+  @media (max-width:900px){.pair{grid-template-columns:1fr 1fr;}}
+  @media (max-width:640px){.pair{grid-template-columns:1fr;}}
+</style></head>
+<body>
+  <h1>LemonSlice — Singing</h1>
+  <div class="pair">
+    <video src="/avatar-overlay/sing-1.mp4" controls loop playsinline preload="metadata"></video>
+    <video src="/avatar-overlay/sing-2.mp4" controls loop playsinline preload="metadata"></video>
+    <video src="/avatar-overlay/sing-3.mp4" controls loop playsinline preload="metadata"></video>
+  </div>
+</body></html>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Vendor — Results</title>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;padding:18px;
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;}
+  .sub{color:#9aa;font-size:13px;margin:0 0 18px;}
+  .card{background:#17171b;border:1px solid #2a2a30;border-radius:12px;padding:16px 18px;margin-bottom:18px;}
+  h2{font-size:15px;margin:0 0 12px;color:#cdd;}
+  .row{display:grid;grid-template-columns:130px 1fr 92px;align-items:center;gap:10px;margin:7px 0;}
+  .name{font-weight:700;font-size:14px;}
+  .rank{color:#8ea; font-size:12px;}
+  .bar{height:22px;background:#101014;border-radius:6px;overflow:hidden;border:1px solid #26262c;}
+  .fill{height:100%;background:linear-gradient(90deg,#4a7dff,#7a5cff);border-radius:6px 0 0 6px;transition:width .4s;}
+  .score{text-align:right;font-variant-numeric:tabular-nums;color:#cdd;font-size:13px;}
+  .medal{font-size:13px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 8px;border-bottom:1px solid #26262c;vertical-align:top;}
+  th{color:#9aa;font-weight:600;}
+  td.order{color:#cdd;}
+  td.order b{color:#8ea;}
+  .msg{color:#ff9a9a;font-size:14px;}
+  .foot{color:#667;font-size:12px;margin-top:8px;}
+  code{background:#101014;padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Avatar Vendor — Results</h1>
+  <p class="sub" id="sub">Loading…</p>
+  <div id="content"></div>
+</div>
+<script>
+  // Vendor N -> real vendor (owner view only; page is reached via the secret key URL)
+  const REAL={"Vendor 1":"Tavus","Vendor 2":"Trulience","Vendor 3":"Anam","Vendor 4":"Protoface","Vendor 5":"HeyGen","Vendor 6":"LemonSlice"};
+  const ALL=["Vendor 1","Vendor 2","Vendor 3","Vendor 4","Vendor 5","Vendor 6"];
+  const key=new URLSearchParams(location.search).get('key')||'';
+  const sub=document.getElementById('sub'), content=document.getElementById('content');
+
+  function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+  (async()=>{
+    if(!key){ sub.innerHTML='<span class="msg">Missing key. Use the secret results URL (…<code>?key=…</code>).</span>'; return; }
+    let d;
+    try{ d=await (await fetch('/simple-backend/vendor-poll?key='+encodeURIComponent(key))).json(); }
+    catch(e){ sub.innerHTML='<span class="msg">Could not load results.</span>'; return; }
+    if(!d.responses){ sub.innerHTML='<span class="msg">Wrong key — results are hidden.</span>'; return; }
+    const R=d.responses;
+    sub.textContent=R.length+' response'+(R.length===1?'':'s')+'.';
+    if(!R.length){ content.innerHTML='<div class="card">No votes yet.</div>'; return; }
+
+    // score: best place = 6 pts … worst = 1 pt. Track avg place + #1 votes.
+    const stat={}; ALL.forEach(v=>stat[v]={pts:0,n:0,places:0,firsts:0});
+    R.forEach(r=>{ (r.ranking||[]).forEach((v,i)=>{ if(stat[v]){ stat[v].pts+=(6-i); stat[v].places+=(i+1); stat[v].n++; if(i===0) stat[v].firsts++; } }); });
+    const board=ALL.map(v=>({v,name:REAL[v]||v,
+        avgPts: stat[v].n? stat[v].pts/stat[v].n : 0,
+        avgPlace: stat[v].n? stat[v].places/stat[v].n : 0,
+        firsts: stat[v].firsts, n: stat[v].n}))
+      .sort((a,b)=>b.avgPts-a.avgPts);
+    const maxPts=Math.max(...board.map(b=>b.avgPts),1);
+    const medals=['🥇','🥈','🥉'];
+
+    let html='<div class="card"><h2>Leaderboard — average score (best experience = 6)</h2>';
+    board.forEach((b,i)=>{
+      const w=Math.round(100*b.avgPts/6);
+      html+=`<div class="row">
+        <div><span class="medal">${medals[i]||''}</span> <span class="name">${esc(b.name)}</span><br>
+             <span class="rank">avg place ${b.avgPlace.toFixed(2)} · ${b.firsts} × 1st</span></div>
+        <div class="bar"><div class="fill" style="width:${w}%"></div></div>
+        <div class="score">${b.avgPts.toFixed(2)} / 6</div>
+      </div>`;
+    });
+    html+='</div>';
+
+    // responses table
+    html+='<div class="card"><h2>Responses</h2><table><thead><tr><th>Email</th><th>Ranking (best → worst)</th><th>When</th></tr></thead><tbody>';
+    R.slice().sort((a,b)=>(b.ts||0)-(a.ts||0)).forEach(r=>{
+      const order=(r.ranking||[]).map((v,i)=> (i===0?'<b>':'')+esc(REAL[v]||v)+(i===0?'</b>':'')).join(' › ');
+      html+=`<tr><td>${esc(r.email)}</td><td class="order">${order}</td><td>${esc((r.iso||'').replace('T',' ').replace('Z',''))}</td></tr>`;
+    });
+    html+='</tbody></table><div class="foot">Score = 6 for a Best-experience vote down to 1 for Worst, averaged across voters.</div></div>';
+    content.innerHTML=html;
+  })();
+</script>
+</body>
+</html>

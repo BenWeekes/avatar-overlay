@@ -5,20 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Avatar Providers</title>
 <style>
-  :root{color-scheme:dark;}*{box-sizing:border-box;}
-  html,body{margin:0;height:100%;}
-  body{background:#0d0d0f;height:100vh;display:flex;flex-direction:column;overflow:hidden;
+  :root{color-scheme:dark;
+    --cols:2;          /* 2x2 grid */
+    --cw:460px;        /* fixed cell width  */
+    --ch:307px;        /* fixed cell height (3:2) — video is contained, never cropped */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;
        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-  .bar{padding:8px;display:flex;justify-content:center;gap:10px;flex:0 0 auto;}
+  .bar{padding:10px;display:flex;justify-content:center;align-items:center;gap:10px;flex:0 0 auto;}
   .bar button{border:0;border-radius:8px;padding:9px 20px;font-weight:600;font-size:14px;cursor:pointer;background:#fff;color:#111;}
-  .grid{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:8px;padding:0 8px 8px;}
-  .cell{position:relative;background:#000;border-radius:10px;overflow:hidden;display:grid;place-items:center;min-height:0;min-width:0;cursor:pointer;text-decoration:none;}
-  .cell video{max-width:100%;max-height:100%;object-fit:contain;background:#000;pointer-events:none;}
+  .bar a{color:#bbb;font-weight:600;text-decoration:none;font-size:14px;border:1px solid #333;border-radius:8px;padding:8px 14px;}
+  .grid{display:grid;grid-template-columns:repeat(var(--cols),var(--cw));gap:10px;
+        justify-content:center;padding:0 10px 16px;}
+  .cell{position:relative;width:var(--cw);height:var(--ch);background:#000;border-radius:10px;
+        overflow:hidden;display:grid;place-items:center;cursor:pointer;text-decoration:none;}
+  .cell video{max-width:100%;max-height:100%;object-fit:contain;pointer-events:none;}  /* fit, no crop */
   .tag{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:6px;font-size:13px;font-weight:600;color:#fff;pointer-events:none;z-index:2;}
+  @media (max-width:980px){:root{--cols:1;}}
 </style>
 </head>
 <body>
-  <div class="bar"><button id="restart">Restart All</button></div>
+  <div class="bar">
+    <button id="restart">Restart All</button>
+    <a href="/avatar-overlay/vendor-grid.html">Vendor grid →</a>
+  </div>
   <div class="grid">
     <a class="cell" href="/avatar-overlay/avatar.html?p=tavus"><span class="tag">Tavus</span><video data-k="tavus" src="/avatar-overlay/grid-tavus.mp4" muted loop playsinline preload="auto"></video></a>
     <a class="cell" href="/avatar-overlay/avatar.html?p=lemon"><span class="tag">LemonSlice</span><video data-k="lemon" src="/avatar-overlay/grid-lemon.mp4" muted loop playsinline preload="auto"></video></a>
@@ -26,8 +38,8 @@
     <a class="cell" href="/avatar-overlay/avatar.html?p=proto"><span class="tag">Protoface</span><video data-k="proto" src="/avatar-overlay/grid-proto.mp4" muted loop playsinline preload="auto"></video></a>
   </div>
 <script>
-  // Tiles are muted silent previews; click any cell to open that provider's video
-  // (unmuted, with native controls). "Restart All" re-syncs every tile from 0.
+  // Fixed-size cells; each video is contained so no top/bottom is ever cropped.
+  // Click any cell to open that provider (unmuted, native controls). "Restart All" re-syncs.
   const vids=[...document.querySelectorAll('video')];
   function restart(){ vids.forEach(v=>{try{v.pause();v.currentTime=0;}catch(e){}});
     requestAnimationFrame(()=>requestAnimationFrame(()=>vids.forEach(v=>v.play().catch(()=>{})))); }

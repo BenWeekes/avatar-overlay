@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar Providers — Chinese</title>
+<style>
+  :root{color-scheme:dark;
+    --cols:3;          /* 3 columns (6 tiles -> full 3x2) */
+    --cw:440px;        /* fixed cell width  */
+    --ch:293px;        /* fixed cell height (3:2) — video is contained, never cropped */
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  .bar{padding:10px;display:flex;justify-content:center;align-items:center;gap:10px;flex:0 0 auto;}
+  .bar button{background:transparent;color:#bbb;border:1px solid #333;border-radius:8px;padding:8px 18px;font-weight:600;font-size:14px;cursor:pointer;}
+  .bar button:hover{color:#fff;border-color:#555;}
+  .bar a{color:#bbb;font-weight:600;text-decoration:none;font-size:14px;border:1px solid #333;border-radius:8px;padding:8px 14px;}
+  .grid{display:grid;grid-template-columns:repeat(var(--cols),var(--cw));gap:10px;
+        justify-content:center;padding:0 10px 16px;}
+  .cell{position:relative;width:var(--cw);height:var(--ch);background:#000;border-radius:10px;
+        overflow:hidden;display:grid;place-items:center;}
+  .cell video{max-width:100%;max-height:100%;object-fit:contain;}  /* fit, no crop; native controls for unmute */
+  .hit{position:absolute;left:0;right:0;top:0;bottom:46px;z-index:1;cursor:pointer;}
+  .tag{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:6px;font-size:13px;font-weight:600;color:#fff;pointer-events:none;z-index:2;}
+  .pending{color:#666;font-size:14px;font-weight:600;}
+  @media (max-width:1380px){:root{--cols:2;}}
+  @media (max-width:920px){:root{--cols:1;}}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button id="restart">Restart All</button>
+    <a href="/avatar-overlay/vendor-grid-mux.html">English</a>
+    <a href="/avatar-overlay/vendor-grid-mux-zh.html">Single 3×2 (中文)</a>
+    <a href="/avatar-overlay/vendor-poll-zh.html">Vote (中文)</a>
+  </div>
+  <div class="grid">
+    <div class="cell"><span class="tag">Vendor 1</span><video data-k="tavus" src="/avatar-overlay/grid2-tavus-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=tavus&g=2&zh=1" aria-label="Open Vendor 1"></a><span class="pending" hidden>Vendor 1 — pending</span></div>
+    <div class="cell"><span class="tag">Vendor 2</span><video data-k="trulience" src="/avatar-overlay/grid2-trulience-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=trulience&g=2&zh=1" aria-label="Open Vendor 2"></a><span class="pending" hidden>Vendor 2 — coming soon</span></div>
+    <div class="cell"><span class="tag">Vendor 3</span><video data-k="anam" src="/avatar-overlay/grid2-anam-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=anam&g=2&zh=1" aria-label="Open Vendor 3"></a><span class="pending" hidden>Vendor 3 — pending</span></div>
+    <div class="cell"><span class="tag">Vendor 4</span><video data-k="proto" src="/avatar-overlay/grid2-proto-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=proto&g=2&zh=1" aria-label="Open Vendor 4"></a><span class="pending" hidden>Vendor 4 — pending</span></div>
+    <div class="cell"><span class="tag">Vendor 5</span><video data-k="heygen" src="/avatar-overlay/grid2-heygen-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=heygen&g=2&zh=1" aria-label="Open Vendor 5"></a><span class="pending" hidden>Vendor 5 — pending</span></div>
+    <div class="cell"><span class="tag">Vendor 6</span><video data-k="lemon" src="/avatar-overlay/grid2-lemon-zh.mp4" muted loop playsinline controls preload="auto"></video><a class="hit" href="/avatar-overlay/avatar.html?p=lemon&g=2&zh=1" aria-label="Open Vendor 6"></a><span class="pending" hidden>Vendor 6 — pending</span></div>
+  </div>
+<script>
+  // Fixed-size cells; each video is contained so no top/bottom is ever cropped, and
+  // carries its own native controls (unmute per tile). All clips share an identical
+  // speech offset + duration. "Restart All" pauses every clip, rewinds to 0, waits
+  // until all are decoded/ready, then plays them in one synchronous batch.
+  // Tiles whose mp4 isn't published yet (e.g. Trulience Chinese) show "coming soon".
+  const vids=[...document.querySelectorAll('video')];
+  vids.forEach(v=>v.addEventListener('error',()=>{ v.hidden=true;
+    const cell=v.parentElement; const p=cell.querySelector('.pending'); if(p) p.hidden=false;
+    const h=cell.querySelector('.hit'); if(h) h.hidden=true; }));
+  const active=()=>vids.filter(v=>!v.hidden);
+
+  function seekZero(v){
+    return new Promise(res=>{
+      const done=()=>{ v.removeEventListener('seeked',done); res(); };
+      v.addEventListener('seeked',done);
+      try{ v.currentTime=0; }catch(e){ done(); }
+      if(v.currentTime===0 && v.readyState>=2){ done(); }
+    });
+  }
+  function ready(v){
+    return v.readyState>=3 ? Promise.resolve()
+      : new Promise(res=>{ const on=()=>{v.removeEventListener('canplaythrough',on);res();};
+                           v.addEventListener('canplaythrough',on); });
+  }
+  let starting=false;
+  async function restart(){
+    if(starting) return; starting=true;
+    const vs=active();
+    vs.forEach(v=>v.pause());
+    await Promise.all(vs.map(seekZero));
+    await Promise.all(vs.map(ready));
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    vs.forEach(v=>v.play().catch(()=>{}));
+    let n=0; const iv=setInterval(()=>{
+      const t=Math.max(...vs.map(v=>v.currentTime));
+      vs.forEach(v=>{ if(t-v.currentTime>0.06) { try{v.currentTime=t;}catch(e){} } });
+      if(++n>=3) clearInterval(iv);
+    },150);
+    starting=false;
+  }
+
+  let cnt=0,live=vids.length;
+  vids.forEach(v=>{ v.addEventListener('canplaythrough',()=>{ if(++cnt>=live) restart(); },{once:true});
+                    v.addEventListener('error',()=>{ live--; if(cnt>=live) restart(); }); });
+  setTimeout(restart,4000);
+  document.getElementById('restart').onclick=restart;
+</script>
+</body>
+</html>

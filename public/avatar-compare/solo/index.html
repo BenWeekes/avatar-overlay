@@ -17,28 +17,19 @@
 </style>
 </head>
 <body>
-  <div class="bar">
-    <a id="back" href="/avatar-overlay/avatar-grid.html">Grid</a>
-    <span class="name" id="name"></span>
-  </div>
+  <div class="bar"><a id="back" href="/avatar-compare/english-grid/">Grid</a><span class="name" id="name"></span></div>
   <div class="stage"><video id="v" controls autoplay loop playsinline preload="auto"></video></div>
 <script>
   const q=new URLSearchParams(location.search);
-  const p=(q.get('p')||'tavus').replace(/[^a-z]/g,'');
-  const g=(q.get('g')||'').replace(/[^0-9]/g,'');   // '' = original grid, '2' = seeded grid2
-  const zh=(q.get('zh')||'').replace(/[^01]/g,''); const suf = zh==='1' ? '-zh' : '';  // Chinese track
-  const names={tavus:'Tavus',lemon:'LemonSlice',anam:'Anam',proto:'Protoface',heygen:'HeyGen',trulience:'Trulience'};
-  // blind labels for the vendor grid (g=2): hide the real vendor so viewers rate unbiased
-  const vend={tavus:'Vendor 1',lemon:'Vendor 6',anam:'Vendor 3',proto:'Vendor 4',heygen:'Vendor 5',trulience:'Vendor 2'};
-  const v=document.getElementById('v');
-  const label = g==='2' ? (vend[p]||p) : (names[p]||p);
+  const n=(q.get('v')||'1').replace(/[^1-6]/g,'')||'1';
+  const l=(q.get('l')||'en').replace(/[^a-z]/g,'')==='zh'?'zh':'en';
+  const label='Vendor '+n;
   document.getElementById('name').textContent=label;
   document.title=label;
-  document.getElementById('back').href = zh==='1' ? '/avatar-overlay/vendor-grid-zh.html'
-      : (g==='2' ? '/avatar-overlay/vendor-grid.html' : '/avatar-overlay/avatar-grid.html');
-  v.src='/avatar-overlay/grid'+g+'-'+p+suf+'.mp4';
+  document.getElementById('back').href = l==='zh' ? '/avatar-compare/chinese-grid/' : '/avatar-compare/english-grid/';
+  const v=document.getElementById('v');
+  v.src='/avatar-compare/media/'+l+'-'+n+'.mp4';
   v.muted=false; v.volume=1;
-  // try to autoplay with sound; if the browser blocks it, the native Play control does it
   v.play().catch(()=>{});
 </script>
 </body>
