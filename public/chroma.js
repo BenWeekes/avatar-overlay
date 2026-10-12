@@ -53,13 +53,14 @@
     }
     start(v) {
       this.v = v; this._running = true;
-      const go = () => { this.canvas.width = v.videoWidth||640; this.canvas.height = v.videoHeight||480;
+      const isCanvas = v.tagName === "CANVAS";
+      const go = () => { this.canvas.width = v.videoWidth||v.width||640; this.canvas.height = v.videoHeight||v.height||480;
         this.gl.viewport(0,0,this.canvas.width,this.canvas.height); this._loop(); };
-      v.readyState >= 2 ? go() : v.addEventListener("canplay", go, { once: true });
+      (isCanvas || v.readyState >= 2) ? go() : v.addEventListener("canplay", go, { once: true });
     }
     _loop() {
       if (!this._running) return;
-      if ("requestVideoFrameCallback" in this.v) this.v.requestVideoFrameCallback(() => { this._draw(); this._loop(); });
+      if (this.v.tagName !== "CANVAS" && "requestVideoFrameCallback" in this.v) this.v.requestVideoFrameCallback(() => { this._draw(); this._loop(); });
       else { this._draw(); requestAnimationFrame(() => this._loop()); }
     }
     _draw() {

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucky Reels — Live</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<style>
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;}
+  body{background:#0a0406;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;overflow:hidden;}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 30%, #3a0d14 0%, #1a0608 55%, #0a0406 100%);}
+  #title{position:absolute;top:22px;left:50%;transform:translateX(-50%);z-index:30;text-align:center;
+    font-weight:900;font-size:30px;letter-spacing:3px;color:#ffd966;white-space:nowrap;
+    text-shadow:0 2px 10px rgba(0,0,0,.8),0 0 22px rgba(255,170,40,.5);}
+  #title .sub{display:block;font-size:12px;letter-spacing:4px;color:#e6a84e;font-weight:700;margin-top:3px;}
+
+  #card{position:relative;z-index:10;width:min(86vmin,520px);aspect-ratio:1/1;border-radius:22px;overflow:hidden;
+    background:#120609;box-shadow:0 0 0 4px #c9972f, 0 0 0 9px #5a3c10, 0 24px 60px rgba(0,0,0,.7);}
+  #avatar{width:100%;height:100%;object-fit:cover;display:block;background:#120609;}
+  #loading{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    color:#ffd966;font-weight:600;font-size:15px;z-index:12;}
+  #loading .sp{width:52px;height:52px;border-radius:50%;border:5px solid rgba(255,255,255,.2);border-top-color:#ffd24a;animation:ld .9s linear infinite;}
+  @keyframes ld{to{transform:rotate(360deg);}}
+
+  #controls{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:12px;}
+  button{border:0;border-radius:11px;padding:13px 24px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;}
+  button:active{transform:translateY(2px);}
+  #controls button{min-width:150px;background:#9a1526;box-shadow:0 4px 0 #5e0c17;}
+  #controls button:active{box-shadow:0 2px 0 #5e0c17;}
+  button:disabled{opacity:.5;cursor:default;}
+  #start{position:absolute;inset:0;z-index:50;background:rgba(6,3,4,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;}
+  #start p{color:#d9c3a0;max-width:420px;margin:0;line-height:1.55;}
+  #startBtn{font-size:20px;padding:16px 42px;background:#e4b33a;color:#2a1600;box-shadow:0 5px 0 #a87c16;}
+  #status{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:30;font-size:12px;color:#9a8a7a;min-height:14px;}
+</style></head>
+<body>
+<div id="stage">
+  <div id="title">LUCKY REELS<span class="sub" id="voicelbl">LIVE</span></div>
+  <div id="card">
+    <video id="avatar" playsinline autoplay></video>
+    <div id="loading"><div class="sp"></div><div>Connecting your host…</div></div>
+  </div>
+  <div id="controls" style="display:none;">
+    <button id="muteBtn">Mute</button>
+    <button id="hangupBtn">Leave</button>
+  </div>
+  <div id="status"></div>
+  <div id="start">
+    <p>Say hello and she’ll tell you all about the slots. Talk to her with your voice — ask anything, and get ready to spin!</p>
+    <button id="startBtn">Start talking</button>
+    <p style="font-size:12px;color:#8a7a6a;">Allow your microphone when prompted.</p>
+  </div>
+</div>
+
+<script>
+const BACKEND="/simple-backend";
+const $=id=>document.getElementById(id);
+const status=t=>{ $('status').textContent=t||""; };
+// ?v=grad (Gradium clone) | gina (ElevenLabs) — default gina
+const V=(new URLSearchParams(location.search).get('v')||'gina').toLowerCase();
+const PROFILE = V==='grad' ? 'SLOTGRAD' : 'SLOTGINA';
+$('voicelbl').textContent = V==='grad' ? 'VOICE: CLONE' : 'VOICE: GINA';
+
+let client=null, mic=null, channel="", agentId=null, avatarUid=null, capTimer=null, muted=false;
+const CAP_MS=180000;
+
+async function start(){
+  $('startBtn').disabled=true; status("Starting…"); $('loading').style.display='flex';
+  channel="sg"+Math.random().toString(36).slice(2,9);
+  try{
+    const r=await fetch(`${BACKEND}/start-agent?profile=${PROFILE}&channel=${encodeURIComponent(channel)}`);
+    const d=await r.json();
+    if(!d.appid) throw new Error(d.error||"start failed");
+    agentId=parseAgentId(d);
+    avatarUid=String((d.agent_video_token&&d.agent_video_token.uid));
+    const token=(d.user_token&&d.user_token.token)||d.token;
+    let uid=(d.user_token&&d.user_token.uid)!=null?d.user_token.uid:d.uid;
+    if(!d.enable_string_uid) uid=Number(uid);
+    client=AgoraRTC.createClient({mode:"rtc",codec:"vp8"});
+    client.on("user-published", onPublished);
+    await client.join(d.appid, channel, token, uid);
+    mic=await AgoraRTC.createMicrophoneAudioTrack();
+    await client.publish([mic]);
+    $('start').style.display='none'; $('controls').style.display='flex';
+    status("Connected — say hello!");
+    capTimer=setTimeout(async()=>{ await stop();
+      $('start').style.display='flex'; $('startBtn').disabled=false; $('startBtn').textContent='Play again';
+      status("Session ended — press Play again."); }, CAP_MS);
+  }catch(e){ status("Error: "+(e.message||e)); $('startBtn').disabled=false; $('loading').style.display='none'; }
+}
+function parseAgentId(d){ try{ const resp=d.agent_response&&d.agent_response.response;
+  const o=typeof resp==='string'?JSON.parse(resp):resp; return (o&&(o.agent_id||o.agentId))||null; }catch(e){ return null; } }
+async function onPublished(user, mediaType){
+  await client.subscribe(user, mediaType);
+  if(mediaType==="audio"){ try{ user.audioTrack.play(); }catch(e){} return; }
+  if(mediaType==="video" && String(user.uid)===avatarUid){
+    const v=$('avatar'); v.srcObject=new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+    try{ await v.play(); }catch(e){}
+    $('loading').style.display='none';
+  }
+}
+$('muteBtn').onclick=async()=>{ if(!mic)return; muted=!muted; try{await mic.setMuted(muted);}catch(e){} $('muteBtn').textContent=muted?'Unmute':'Mute'; };
+$('hangupBtn').onclick=async()=>{ await stop(); location.reload(); };
+async function stop(){
+  if(capTimer) clearTimeout(capTimer);
+  try{ const v=$('avatar'); if(v) v.srcObject=null; }catch(e){}
+  try{ if(agentId) await fetch(`${BACKEND}/hangup-agent?agent_id=${encodeURIComponent(agentId)}&channel=${encodeURIComponent(channel)}&profile=${PROFILE}`); }catch(e){}
+  try{ mic&&mic.close(); if(client) await client.leave(); }catch(e){}
+}
+window.addEventListener('pagehide',()=>stop());
+window.addEventListener('beforeunload',()=>stop());
+$('startBtn').onclick=start;
+</script>
+</body></html>

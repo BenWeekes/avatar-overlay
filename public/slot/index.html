@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucky Spin — voice slots</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<script src="../agora-rtm.js"></script>
+<script src="../chroma.js"></script>
+<style>
+  :root{ --item-height:84px; --key:#004AC6; }
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;}
+  body{background:#07070a;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;overflow:hidden;}
+  #stage{position:fixed;inset:0;background:#07070a center/cover no-repeat;display:flex;align-items:center;justify-content:center;}
+  #stage::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,transparent 40%,rgba(0,0,0,.45));pointer-events:none;}
+
+  /* balance */
+  #balancePill{position:absolute;top:18px;left:50%;transform:translateX(-50%);z-index:30;
+    background:linear-gradient(#1b1b22,#0d0d12);border:2px solid #f9e13d;border-radius:40px;
+    padding:10px 26px;font-weight:800;font-size:26px;color:#ffe680;box-shadow:0 6px 20px rgba(0,0,0,.5);letter-spacing:.5px;}
+  #balancePill .lbl{font-size:11px;color:#b9b27a;display:block;text-align:center;letter-spacing:2px;font-weight:700;}
+  #delta{position:absolute;top:84px;left:50%;transform:translateX(-50%);z-index:30;font-weight:800;font-size:20px;opacity:0;transition:opacity .3s;}
+  #delta.up{color:#5fe08a;} #delta.down{color:#ff8a8a;}
+
+  /* slot machine — centre, nudged left to leave room for the avatar */
+  #machine{position:relative;z-index:10;transform:scale(var(--scale,1));transform-origin:center;}
+  #container{padding:36px;border-radius:16px;position:relative;
+    background:
+      radial-gradient(ellipse at 50% 0%,rgba(255,255,255,.08),transparent 60%),
+      linear-gradient(150deg,#6e1018,#4a0a10 42%,#7d1219 68%,#3b080c);
+    border:2px solid #2a0608;
+    box-shadow:0 16px 40px rgba(0,0,0,.65), inset 0 0 0 6px rgba(0,0,0,.25), inset 0 2px 14px rgba(255,255,255,.08);}
+  .window-border{padding:6px;background-image:linear-gradient(to bottom,#fcf8ad,#f8f3cd,#f9e13d);border-radius:8px;box-shadow:0 6px 4px -5px #eca654 inset;}
+  .window{position:relative;overflow:hidden;height:calc(3 * var(--item-height));display:flex;border-radius:5px;}
+  .window::before,.window::after{content:"";position:absolute;left:0;width:100%;height:10px;z-index:4;}
+  .window::before{top:0;background-image:linear-gradient(to bottom,rgba(0,0,0,.5),transparent);}
+  .window::after{bottom:0;background-image:linear-gradient(to top,rgba(0,0,0,.5),transparent);}
+  .payline{position:absolute;left:0;right:0;top:calc(var(--item-height) + 3px);height:calc(var(--item-height) - 6px);
+    z-index:4;border:2px solid rgba(255,80,80,.0);pointer-events:none;}
+  .outer-col{overflow-y:hidden;width:84px;background-image:linear-gradient(#16013c,#741a5e,#430155,#16013c);height:calc(var(--item-height)*3);}
+  .outer-spacer{width:7px;border-right:2px solid #f7ce6c38;background-image:linear-gradient(#be4d01,#893802);}
+  .col{padding:0 8px;will-change:transform;transform:translateY(calc(-100% + var(--item-height)*3));}
+  .col img{width:100%;height:auto;display:block;margin:2px 0;position:relative;z-index:3;}
+  .icon{height:var(--item-height);display:flex;align-items:center;justify-content:center;position:relative;}
+  #container.spinning .outer-col:nth-of-type(2) .col{animation-delay:.01s;}
+  #container.spinning .outer-col:nth-of-type(3) .col{animation-delay:.02s;}
+  #container.spinning .outer-col:nth-of-type(4) .col{animation-delay:.03s;}
+  #container.spinning .outer-col:nth-of-type(5) .col{animation-delay:.04s;}
+  #container.spinning .col{animation-name:scroll;animation-iteration-count:1;animation-timing-function:cubic-bezier(.3,.9,.4,1);}
+  @keyframes scroll{to{transform:translateY(0);}}
+  #container.win .window-border{animation:winglow .5s ease-in-out 6 alternate;}
+  @keyframes winglow{to{box-shadow:0 0 0 4px #fff,0 0 34px 10px #ffe14d;}}
+
+  /* avatar (chroma) on the right */
+  /* square to match the 1x1 avatar render (no vertical stretch); nudged right */
+  #cv{position:absolute;right:-3%;bottom:0;height:61%;aspect-ratio:1/1;width:auto;z-index:20;pointer-events:none;
+     filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));}
+  #src{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;left:-10px;}
+  /* spinner shown in the avatar area while LemonSlice loads (~10s) */
+  #avatarload{display:none;position:absolute;right:11%;bottom:30%;z-index:21;flex-direction:column;align-items:center;gap:12px;
+    color:#ffe680;font-weight:600;font-size:14px;text-shadow:0 2px 6px rgba(0,0,0,.8);}
+  #avatarload .spin{width:54px;height:54px;border-radius:50%;border:5px solid rgba(255,255,255,.25);border-top-color:#ffe14d;animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* self view — small round window, bottom-left */
+  #self{position:absolute;left:26px;bottom:26px;width:150px;height:150px;border-radius:50%;overflow:hidden;z-index:25;
+    border:3px solid rgba(255,255,255,.8);box-shadow:0 8px 22px rgba(0,0,0,.5);background:#111;display:none;}
+  #self video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  #self .cap{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:10px;background:rgba(0,0,0,.45);padding:2px;letter-spacing:1px;}
+
+  /* win banner */
+  #winBanner{position:absolute;top:34%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:40;opacity:0;
+    font-weight:900;font-size:52px;color:#fff;text-shadow:0 0 18px #ffb400,0 4px 0 #a85d00;transition:all .3s;pointer-events:none;}
+  #winBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+
+  /* controls */
+  #controls{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:12px;align-items:center;}
+  button{border:0;border-radius:10px;padding:13px 22px;font-weight:700;font-size:15px;cursor:pointer;background:#4a7dff;color:#fff;box-shadow:0 4px 0 #2a4fb0;}
+  button:active{transform:translateY(2px);box-shadow:0 2px 0 #2a4fb0;}
+  button:disabled{opacity:.5;cursor:default;}
+  /* bottom controls: identical colour + width for consistency */
+  #controls button{min-width:150px;background:#8a1220;box-shadow:0 4px 0 #530a13;}
+  #controls button:active{box-shadow:0 2px 0 #530a13;}
+  #start{position:absolute;inset:0;z-index:50;background:rgba(5,5,9,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+  #start h1{font-size:34px;margin:0;color:#ffe680;text-shadow:0 2px 10px rgba(0,0,0,.6);}
+  #start p{color:#b9bac6;max-width:440px;text-align:center;margin:0;line-height:1.5;}
+  #startBtn{font-size:20px;padding:16px 40px;background:#e7352f;box-shadow:0 5px 0 #8f1512;}
+  #status{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:30;font-size:12px;color:#8a8a98;min-height:14px;}
+  #hud{display:none;position:absolute;top:8px;left:8px;z-index:60;margin:0;max-width:46%;max-height:60%;overflow:auto;
+    background:rgba(0,0,0,.72);color:#8fe08f;font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px;border-radius:8px;white-space:pre-wrap;}
+</style></head>
+<body>
+<div id="stage">
+  <div id="balancePill"><span class="lbl">BALANCE</span><span id="bal">$100</span></div>
+  <div id="winBanner"></div>
+
+  <div id="machine">
+    <div id="container">
+      <div class="window-border"><div class="window">
+        <div class="outer-col"><div class="col"></div></div><div class="outer-spacer"></div>
+        <div class="outer-col"><div class="col"></div></div><div class="outer-spacer"></div>
+        <div class="outer-col"><div class="col"></div></div><div class="outer-spacer"></div>
+        <div class="outer-col"><div class="col"></div></div><div class="outer-spacer"></div>
+        <div class="outer-col"><div class="col"></div></div>
+        <div class="payline"></div>
+      </div></div>
+    </div>
+  </div>
+
+  <video id="src" muted playsinline autoplay></video>
+  <canvas id="cv" width="512" height="512"></canvas>
+  <div id="avatarload"><div class="spin"></div><div>Loading your host…</div></div>
+
+  <div id="self"><video id="selfv" muted playsinline autoplay></video></div>
+
+  <div id="controls" style="display:none;">
+    <button id="muteBtn">Mute</button>
+    <button id="hangupBtn">Leave</button>
+  </div>
+  <div id="status"></div>
+  <pre id="hud"></pre>
+
+  <div id="start">
+    <p>Talk to your host and play the slots with your voice. Just say <b>“spin for me”</b> — she’ll pull the reels and your balance moves with every result. You start with <b>$100</b>.</p>
+    <button id="startBtn">Start playing</button>
+    <p style="font-size:12px;color:#777;">Allow microphone (and camera for your window) when prompted.</p>
+  </div>
+</div>
+
+<script>
+const BACKEND="/simple-backend", MCP="/slot-mcp", PROFILE="slot_play", KEY="#004AC6";
+const $=id=>document.getElementById(id);
+const status=t=>{ $('status').textContent=t||""; };
+const DEBUG=new URLSearchParams(location.search).has('debug');
+const L=(...a)=>{ try{console.log("[slot]",...a);}catch(e){}
+  if(DEBUG){ const h=$('hud'); if(h){ h.style.display='block';
+    h.textContent=(new Date().toISOString().slice(11,19)+" "+a.join(" ")+"\n"+h.textContent).slice(0,2000);} } };
+window.addEventListener('error',e=>L("ERR",e.message));
+window.addEventListener('unhandledrejection',e=>L("REJ",(e.reason&&e.reason.message)||e.reason));
+
+/* ---------- slot reel engine (adapted from HTML-slot-machine-example) ---------- */
+const ICONS=["apple","apricot","banana","big_win","cherry","grapes","lemon","lucky_seven","orange","pear","strawberry","watermelon"];
+const BASE_DUR=4.0, COL_DUR=0.35;
+let cols;
+const rndIcon=()=>ICONS[Math.floor(Math.random()*ICONS.length)];
+const rndDur=()=>Math.floor(Math.random()*10)/100;
+function iconDiv(name){ return '<div class="icon"><img src="items/'+name+'.png" alt=""></div>'; }
+function setInitialItems(){
+  cols=document.querySelectorAll('.col');
+  cols.forEach((col,i)=>{
+    const n=38+i*3; let html="",first="";
+    for(let x=0;x<n;x++){ const d=iconDiv(rndIcon()); html+=d; if(x<3) first+=d; }
+    col.innerHTML=html+first;
+  });
+}
+function applyTarget(reels){ // reels: 5 x [top,mid,bottom]
+  cols.forEach((col,i)=>{
+    const imgs=col.querySelectorAll('.icon img'); const r=reels[i]||[rndIcon(),rndIcon(),rndIcon()];
+    for(let x=0;x<3;x++){ const src='items/'+r[x]+'.png';
+      imgs[x].setAttribute('src',src); imgs[imgs.length-3+x].setAttribute('src',src); }
+  });
+}
+let spinning=false;
+function runSpin(spin){           // spin = {reels,win,payout,net,balance,...}
+  if(spinning) return; spinning=true;
+  // Reels start right away (snappy). She begins 'Spinning!' ~1.3s later while they
+  // are still turning — the spin is long enough that her line clearly overlaps it.
+  startReels(spin);
+}
+function startReels(spin){
+  const c=$('container'); c.classList.remove('win');
+  let duration=BASE_DUR+rndDur();
+  cols.forEach(col=>{ duration+=COL_DUR+rndDur(); col.style.animationDuration=duration+'s'; });
+  c.classList.add('spinning');
+  setTimeout(()=>applyTarget(spin.reels), BASE_DUR*1000/2);
+  // Reveal the result ONLY once the reels have settled AND the host has finished
+  // her 'Spinning!' line (agent audio gone quiet) — so her result narration never
+  // cuts itself off. Safety timeout guarantees it still fires.
+  revealWhenQuiet(duration);
+  setTimeout(()=>{
+    c.classList.remove('spinning'); spinning=false;
+    setBalance(spin.balance);
+    if(spin.win){ c.classList.add('win'); banner('WIN $'+spin.payout); }
+  }, duration*1000);
+}
+function revealWhenQuiet(duration){
+  const t0=Date.now();
+  // Fire the cue REVEAL_LEAD seconds before the reels fully stop, so the RTM ->
+  // Gemini -> avatar-render pipeline (~1.5s) lands her line right as they settle
+  // instead of ~2s after. Still gated on her having finished 'Spinning!' (quiet),
+  // and the result symbols are already locked in from mid-spin, so it's safe.
+  const earliest=Math.max(0,(duration-REVEAL_LEAD))*1000;
+  const maxMs=duration*1000+1200;                   // cap: never later than ~1.2s after stop
+  let quietSince=0, fired=false;
+  (function wait(){
+    if(fired) return;
+    const el=Date.now()-t0;
+    const vol=(agentAudio && agentAudio.getVolumeLevel) ? agentAudio.getVolumeLevel() : 0;
+    if(vol<0.03){ if(!quietSince) quietSince=Date.now(); } else quietSince=0;
+    const quietEnough = quietSince && (Date.now()-quietSince)>=150;   // ~done saying 'Spinning!'
+    if((el>=earliest && quietEnough) || el>=maxMs){
+      fired=true; L("reveal fired", "el="+el);
+      fetch(`${MCP}/reveal/${channel}`,{method:"POST"}).catch(()=>{});
+    } else setTimeout(wait, 60);
+  })();
+}
+/* ---------- balance / banner ---------- */
+let shownBalance=100;
+function setBalance(b){ if(typeof b==='number'){ shownBalance=b; $('bal').textContent='$'+b; } }
+function showDelta(net){ if(typeof net!=='number'||!net) return; const d=$('delta');
+  d.textContent=(net>0?'+$':'-$')+Math.abs(net); d.className=net>0?'up':'down'; d.style.opacity='1';
+  setTimeout(()=>d.style.opacity='0',2200); }
+function banner(t){ const b=$('winBanner'); b.textContent=t; b.classList.add('show'); setTimeout(()=>b.classList.remove('show'),2600); }
+
+/* ---------- Agora + session ---------- */
+let client=null, mic=null, cam=null, renderer=null, channel="", agentId=null, avatarUid=null, poll=null, capTimer=null, lastSeq=0, muted=false, agentAudio=null, rtm=null;
+const CAP_MS=180000; // usual session cap (matches the backend MAX_CALL_DURATION)
+const REVEAL_LEAD=1.3; // seconds before reel-stop to fire the reveal cue (hides pipeline latency)
+function fitScale(){ const h=window.innerHeight; $('machine').style.setProperty('--scale', Math.min(1, (h*0.82)/ (3*84+68+12)).toFixed(3)); }
+window.addEventListener('resize',fitScale);
+
+async function start(){
+  $('startBtn').disabled=true; status("Starting…");
+  channel=new URLSearchParams(location.search).get('channel') || ("slot"+Math.random().toString(36).slice(2,9));
+  try{
+    // Make turn-detection less trigger-happy so echo of her own voice, room noise
+    // or your reactions don't cut her off mid-sentence (the "audio cut out" glitch).
+    const td="&turn_detection_start_of_speech_sensitivity=START_SENSITIVITY_LOW"
+           +"&turn_detection_end_of_speech_sensitivity=END_SENSITIVITY_LOW"
+           +"&turn_detection_silence_duration_ms=450&turn_detection_prefix_padding_ms=500";
+    const r=await fetch(`${BACKEND}/start-agent?profile=${PROFILE}&channel=${encodeURIComponent(channel)}${td}`);
+    const d=await r.json();
+    if(!d.appid) throw new Error(d.error||"start failed");
+    agentId=parseAgentId(d);
+    avatarUid=String((d.agent_video_token&&d.agent_video_token.uid));
+    const token=(d.user_token&&d.user_token.token)||d.token;
+    // MUST join with an INTEGER uid (enable_string_uid=false). Passing "101" as a
+    // string puts us in string-uid mode (mapped to a random uid) and we'd never
+    // see the integer-uid agent/avatar -> no avatar, no voice.
+    let uid=(d.user_token&&d.user_token.uid)!=null?d.user_token.uid:d.uid;
+    if(!d.enable_string_uid) uid=Number(uid);
+
+    L("start resp: appid?",!!d.appid,"avatarUid",avatarUid,"uid",uid,"agentId",agentId);
+    client=AgoraRTC.createClient({mode:"rtc",codec:"vp8"});
+    window.__client=client; window.__ch=channel;
+    client.on("user-published", onPublished);
+    client.on("user-joined", u=>L("user-joined",u.uid));
+    client.on("user-unpublished",(u,mt)=>L("user-unpublished",u.uid,mt));
+    await client.join(d.appid, channel, token, uid);
+    L("joined channel",channel,"as",uid);
+
+    mic=await AgoraRTC.createMicrophoneAudioTrack();
+    await client.publish([mic]);
+    L("mic published");
+    startSelfCam();
+
+    $('start').style.display='none'; $('controls').style.display='flex';
+    $('cv').style.display='';               // re-show avatar window (hidden on a prior stop)
+    $('avatarload').style.display='flex';   // spinner until the avatar video renders
+    status("Connected — say “spin for me”.");
+    // prime the initial balance, then RECEIVE spins via RTM (pushed by the tool).
+    // Polling stays only as a fallback if RTM login fails.
+    try{ const s=await (await fetch(`${MCP}/state/${channel}`)).json(); setBalance(s.balance); }catch(e){}
+    try{ await connectRtm(d.appid, d.user_rtm_uid, (d.user_token&&d.user_token.token)||d.token); }
+    catch(e){ L("rtm connect failed -> polling fallback", e.message); poll=setInterval(pollState, 300); }
+    capTimer=setTimeout(async()=>{ await stop();
+      $('start').style.display='flex'; $('startBtn').disabled=false; $('startBtn').textContent='Play again';
+      status("Session ended — press Play again."); }, CAP_MS);
+  }catch(e){ status("Error: "+(e.message||e)); $('startBtn').disabled=false; $('start').style.display='flex'; }
+}
+function parseAgentId(d){
+  try{ const resp=d.agent_response&&d.agent_response.response;
+    const o=typeof resp==='string'?JSON.parse(resp):resp; return (o&&(o.agent_id||o.agentId))||null; }catch(e){ return null; }
+}
+async function onPublished(user, mediaType){
+  L("published",user.uid,mediaType);
+  await client.subscribe(user, mediaType);
+  L("subscribed",user.uid,mediaType);
+  if(mediaType==="audio"){ agentAudio=user.audioTrack; try{ user.audioTrack.play(); L("playing audio",user.uid); }catch(e){ L("audio play err",e.message); } return; }
+  if(mediaType==="video" && String(user.uid)===avatarUid){
+    const src=$('src'); src.srcObject=new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+    try{ await src.play(); }catch(e){ L("src play err",e.message); }
+    if(!renderer) renderer=new ChromaKeyRenderer($('cv'), {keyColor:KEY, similarity:0.14, smoothness:0.10, spill:0.12});
+    renderer.start(src); L("render avatar started",user.uid);
+    $('avatarload').style.display='none';   // avatar is up — hide the spinner
+  } else if(mediaType==="video"){ L("video from non-avatar uid",user.uid,"(avatarUid="+avatarUid+")"); }
+}
+// RTM push: the tool publishes slot.spin / slot.balance to the channel; we receive here.
+async function connectRtm(appid, rtmUid, rtmToken){
+  rtm=new AgoraRTM.RTM(appid, String(rtmUid), {logLevel:"warn"});
+  await rtm.login({token: rtmToken});
+  await rtm.subscribe(channel, {withMessage:true, withPresence:false});
+  rtm.addEventListener("message", onRtm);
+  L("rtm connected", rtmUid);
+}
+function onRtm(e){
+  try{
+    const m=(typeof e.message==="string")?JSON.parse(e.message):e.message;
+    if(!m) return;
+    if(m.object==="slot.spin"){
+      if(m.seq && m.seq!==lastSeq && !spinning){ lastSeq=m.seq; runSpin(m); }
+    } else if(m.object==="slot.balance"){
+      if(m.reset){ lastSeq=0; setBalance(m.balance); }
+      else if(!spinning && typeof m.balance==='number'){ setBalance(m.balance); }
+    }
+  }catch(err){ L("rtm msg err", err.message); }
+}
+// Fallback only (used if RTM login fails).
+async function pollState(){
+  try{
+    const s=await (await fetch(`${MCP}/state/${channel}`)).json();
+    if(s.lastSpin && s.lastSpin.seq && s.lastSpin.seq!==lastSeq && !spinning){ lastSeq=s.lastSpin.seq; runSpin(s.lastSpin); }
+    else if(typeof s.balance==='number' && s.balance!==shownBalance && !spinning){ setBalance(s.balance); }
+  }catch(e){}
+}
+async function startSelfCam(){
+  try{ cam=await AgoraRTC.createCameraVideoTrack(); $('self').style.display='block';
+    cam.play('selfv'); }catch(e){ /* no camera / denied — leave self window hidden */ }
+}
+$('muteBtn').onclick=async()=>{ if(!mic)return; muted=!muted; try{await mic.setMuted(muted);}catch(e){}
+  $('muteBtn').textContent=muted?'Unmute':'Mute'; };
+$('hangupBtn').onclick=async()=>{ await stop(); location.reload(); };
+async function stop(){
+  if(poll) clearInterval(poll);
+  if(capTimer) clearTimeout(capTimer);
+  // hide the avatar window immediately so it doesn't flash black while tearing down
+  try{ renderer&&renderer.stop(); }catch(e){}
+  try{ $('cv').style.display='none'; $('avatarload').style.display='none';
+       $('self').style.display='none'; const sv=$('src'); if(sv) sv.srcObject=null; }catch(e){}
+  try{ if(rtm){ await rtm.logout(); rtm=null; } }catch(e){}
+  try{ if(agentId) await fetch(`${BACKEND}/hangup-agent?agent_id=${encodeURIComponent(agentId)}&channel=${encodeURIComponent(channel)}&profile=${PROFILE}`); }catch(e){}
+  try{ renderer&&renderer.stop(); }catch(e){}
+  try{ mic&&mic.close(); cam&&cam.close(); if(client) await client.leave(); }catch(e){}
+}
+window.addEventListener('pagehide',()=>stop());
+window.addEventListener('beforeunload',()=>stop());
+
+/* init */
+setInitialItems(); fitScale();
+// preload background image then set it
+(function(){ const bg=new Image(); bg.onload=()=>$('stage').style.backgroundImage="url(ca.png)"; bg.src="ca.png"; })();
+$('startBtn').onclick=start;
+</script>
+</body></html>

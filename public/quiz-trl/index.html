@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Wheel — Trulience</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<style>
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;}
+  body{background:#07070a;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;overflow:hidden;}
+  #stage{position:fixed;inset:0;background:#07070a center/cover no-repeat;display:flex;align-items:center;justify-content:center;}
+  #stage::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,transparent 40%,rgba(0,0,0,.45));pointer-events:none;}
+
+  #balancePill{position:absolute;top:18px;left:50%;transform:translateX(-50%);z-index:30;text-align:center;
+    background:linear-gradient(#1b1b22,#0d0d12);border:2px solid #4ea8ff;border-radius:40px;
+    padding:10px 26px;font-weight:800;font-size:26px;color:#cfe8ff;box-shadow:0 6px 20px rgba(0,0,0,.5);letter-spacing:.5px;}
+  #balancePill .lbl{font-size:11px;color:#7fb0d8;display:block;text-align:center;letter-spacing:2px;font-weight:700;}
+  #balancePill #score{display:block;text-align:center;}
+
+  #wheelwrap{position:relative;z-index:10;transform:scale(var(--scale,1));transform-origin:center;}
+  #wheel{display:block;width:380px;height:380px;border-radius:50%;
+    box-shadow:0 0 0 8px #10233a, 0 0 0 13px #4ea8ff, 0 18px 50px rgba(0,0,0,.7);}
+  #hub{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;z-index:12;
+    background:radial-gradient(circle at 35% 30%,#fff,#8fc6ff 60%,#2a6bb0);box-shadow:0 3px 10px rgba(0,0,0,.6);}
+  #ptr{position:absolute;left:50%;top:-16px;transform:translateX(-50%);z-index:14;width:36px;height:48px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.6));}
+  #lights{position:absolute;left:50%;top:50%;width:0;height:0;z-index:13;pointer-events:none;}
+  #lights .lt{position:absolute;width:12px;height:12px;border-radius:50%;margin:-6px;
+    background:radial-gradient(circle,#fff,#8fd0ff 55%,rgba(0,140,255,0));
+    box-shadow:0 0 10px 3px rgba(90,180,255,.85);animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.2;box-shadow:0 0 3px 1px rgba(90,180,255,.35);}}
+
+  /* The Trulience SDK forces #remoteVideo to width/height:100% and sizes its canvas to 1280x720,
+     so we can't size #remoteVideo directly — wrap it in a sized box and clip. The canvas is alpha,
+     and the engine's VBA ChromaKey (see CHROMA) keys the olive backdrop out of the presenter video,
+     so the wheel scene shows through. */
+  #avatarbox{position:absolute;right:-5%;bottom:0;height:58%;aspect-ratio:1/1;width:auto;overflow:hidden;opacity:0;z-index:20;pointer-events:none;
+     filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));transition:opacity .3s;}
+  #remoteVideo{width:100%;height:100%;}
+  #avatarbox video, #avatarbox canvas{width:100%!important;height:100%!important;object-fit:cover!important;}
+  /* local camera self-view (preview only — not published) */
+  #self{position:absolute;left:26px;bottom:26px;width:150px;height:150px;border-radius:50%;overflow:hidden;z-index:25;
+    border:3px solid rgba(255,255,255,.8);box-shadow:0 8px 22px rgba(0,0,0,.5);background:#111;display:none;}
+  #self video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  #avatarload{display:none;position:absolute;right:11%;bottom:30%;z-index:21;flex-direction:column;align-items:center;gap:12px;
+    color:#cfe8ff;font-weight:600;font-size:14px;text-shadow:0 2px 6px rgba(0,0,0,.8);}
+  #avatarload .spin{width:54px;height:54px;border-radius:50%;border:5px solid rgba(255,255,255,.25);border-top-color:#4ea8ff;animation:ld .9s linear infinite;}
+  @keyframes ld{to{transform:rotate(360deg);}}
+
+  #controls{position:absolute;bottom:64px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:12px;align-items:center;}
+  button{border:0;border-radius:10px;padding:13px 22px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;}
+  button:active{transform:translateY(2px);}
+  #controls button{min-width:150px;background:#1f5fa8;box-shadow:0 4px 0 #113963;}
+  #controls button:active{box-shadow:0 2px 0 #113963;}
+  button:disabled{opacity:.5;cursor:default;}
+  #start{position:absolute;inset:0;z-index:50;background:rgba(5,5,9,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+  #start p{color:#b9bac6;max-width:470px;text-align:center;margin:0;line-height:1.5;}
+  #startBtn{font-size:20px;padding:16px 40px;background:#2a7fff;box-shadow:0 5px 0 #124a93;}
+  #status{position:absolute;bottom:46px;left:50%;transform:translateX(-50%);z-index:30;font-size:12px;color:#8a8a98;min-height:14px;}
+  #hud{display:none;position:absolute;top:8px;left:8px;z-index:60;margin:0;max-width:46%;max-height:60%;overflow:auto;
+    background:rgba(0,0,0,.72);color:#8fe08f;font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px;border-radius:8px;white-space:pre-wrap;}
+</style></head>
+<body>
+<div id="stage">
+  <div id="balancePill"><span class="lbl">SCORE</span><span id="score">0</span></div>
+
+  <div id="wheelwrap">
+    <div id="lights"></div>
+    <svg id="ptr" viewBox="0 0 40 52"><path d="M20 50 L4 10 Q20 -2 36 10 Z" fill="#fff"/><circle cx="20" cy="12" r="4" fill="#1a1a24"/></svg>
+    <canvas id="wheel" width="920" height="920"></canvas>
+    <div id="hub"></div>
+  </div>
+
+  <div id="avatarbox"><div id="remoteVideo"></div></div>
+  <div id="self"><video id="selfv" muted playsinline autoplay></video></div>
+  <div id="avatarload"><div class="spin"></div><div>Loading your host…</div></div>
+
+  <div id="controls" style="display:none;">
+    <button id="muteBtn">Mute</button>
+    <button id="hangupBtn">Leave</button>
+  </div>
+  <div id="status"></div>
+  <pre id="hud"></pre>
+
+  <div id="start">
+    <p>Play the <b>Quiz Wheel</b> with your voice. Say <b>“spin”</b> to land on a trivia category, then answer the host’s question to score <b>+100 points</b>. Hit <b>Extra Points</b> to leap ahead — or <b>Lose Points</b> and give some back!</p>
+    <button id="startBtn">Start playing</button>
+    <p style="font-size:12px;color:#777;">Allow microphone when prompted.</p>
+  </div>
+</div>
+
+<script>
+const BACKEND="/simple-backend", MCP="/quiz-mcp", PROFILE="QUIZ_TRL";
+const AGENT_EP="https://convoai-demo.agora.io/simple-backend/start-agent";
+const TRL_SDK="https://digitalhuman.uk/sdk/trulience.sdk.js";
+const TRL_AVATAR="2908248967865453157";
+// NOTE: single quotes only — double quotes get escaped in transit and break the SSML parser.
+const SCENE={ thumbup:"<trl-scene content='thumbup'/>", shrug:"<trl-scene content='shrug'/>",
+  smile:"<trl-sequence id='smile' level='0.4' duration='3' final='1'/>",
+  concerned:"<trl-sequence id='concerned' level='1.0' duration='4' final='1'/>" };
+const $=id=>document.getElementById(id);
+const status=t=>{ $('status').textContent=t||""; };
+// on-screen log panel is opt-in via ?hud (NOT ?debug — that was handed out in tuning URLs and kept
+// re-triggering the panel on the demo). Console logging is always on.
+const SHOW_HUD=new URLSearchParams(location.search).has('hud');
+// Trulience's OWN VBA chroma-key (engine post-process). The sasha-presenter video has an olive
+// backdrop (~#86A65F, from ~/c.png) and the avatar config ships NO ChromaKey, so we inject one via
+// setAvatarParams -> Scenes.default.ChromaKey. Needs Enable + PostProcess true to activate the pass.
+// Tune live with URL params, e.g. ?key=86A65F&sim=0.05&smooth=0.1&blur=2 (key=off disables).
+const _qp=new URLSearchParams(location.search);
+const CHROMA_OFF=(_qp.get('key')||'').toLowerCase()==='off';
+const CHROMA={ Enable:!CHROMA_OFF, PostProcess:!CHROMA_OFF,
+  Color:"#"+(_qp.get('key')||"86A65F").replace(/^#/,''),
+  Similarity:parseFloat(_qp.get('sim')||"0.10"),
+  Smoothness:parseFloat(_qp.get('smooth')||"0.10"),
+  Threshold:parseFloat(_qp.get('thr')||"0.001"),
+  Blur:parseFloat(_qp.get('blur')||"2") };
+const L=(...a)=>{ try{console.log("[quiztrl]",...a);}catch(e){}
+  if(SHOW_HUD){ const h=$('hud'); if(h){ h.style.display='block';
+    h.textContent=(new Date().toISOString().slice(11,19)+" "+a.join(" ")+"\n"+h.textContent).slice(0,2000);} } };
+window.addEventListener('error',e=>L("ERR",e.message));
+window.addEventListener('unhandledrejection',e=>L("REJ",(e.reason&&e.reason.message)||e.reason));
+
+/* ---------- wheel ---------- */
+const SEGMENTS=["SCIENCE","EXTRA POINTS","HISTORY","SPORTS","LOSE POINTS","GEOGRAPHY","MUSIC","EXTRA POINTS","MOVIES","NATURE","FOOD","TECH"];
+const N=SEGMENTS.length, SEG=2*Math.PI/N, DURATION=4.6;
+const wheel=$('wheel'), wx=wheel.getContext('2d');
+function segColor(l,i){ return `hsl(${Math.round(i*360/N)},90%,55%)`; }
+function darkenHsl(c,dl){ const m=c.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/); return m?`hsl(${m[1]},${m[2]}%,${Math.max(8,+m[3]-dl)}%)`:c; }
+function fitLabelFont(R){ const maxLen=R*0.72; wx.textAlign="right"; wx.textBaseline="middle";
+  for(let fs=30; fs>10; fs--){ wx.font=`800 ${fs}px system-ui,sans-serif`; if(SEGMENTS.every(s=>wx.measureText(s).width<=maxLen)) return fs; } return 11; }
+function drawWheel(){
+  const S=wheel.width, cx=S/2, cy=S/2, R=S/2-8;
+  wx.clearRect(0,0,S,S); wx.save(); wx.translate(cx,cy);
+  const LFS=fitLabelFont(R);
+  for(let i=0;i<N;i++){
+    const a0=i*SEG-Math.PI/2, a1=a0+SEG, base=segColor(SEGMENTS[i], i);
+    const g=wx.createRadialGradient(0,0,R*0.15,0,0,R); g.addColorStop(0,base); g.addColorStop(1,darkenHsl(base,26));
+    wx.beginPath(); wx.moveTo(0,0); wx.arc(0,0,R,a0,a1); wx.closePath(); wx.fillStyle=g; wx.fill();
+    wx.strokeStyle="rgba(0,0,0,.35)"; wx.lineWidth=2; wx.stroke();
+    const mid=a0+SEG/2; wx.save(); wx.rotate(mid);
+    wx.font=`800 ${LFS}px system-ui,sans-serif`; wx.textAlign="right"; wx.textBaseline="middle";
+    wx.fillStyle="#fff"; wx.shadowColor="rgba(0,0,0,.75)"; wx.shadowBlur=4;
+    wx.fillText(SEGMENTS[i], R-20, 0); wx.restore();
+  }
+  wx.beginPath(); wx.arc(0,0,R,0,2*Math.PI); wx.lineWidth=5; wx.strokeStyle="rgba(255,255,255,.2)"; wx.stroke(); wx.restore();
+}
+let rotation=0;
+function applyRot(r){ wheel.style.transform=`translateZ(0) rotate(${r}rad)`; }
+function easeOutQuart(t){ return 1-Math.pow(1-t,4); }
+function buildLights(){ const el=$('lights'); if(!el) return; el.innerHTML='';
+  const R=190+18, n=28;
+  for(let i=0;i<n;i++){ const a=(i/n)*2*Math.PI; const d=document.createElement('div'); d.className='lt';
+    d.style.left=(Math.cos(a)*R)+'px'; d.style.top=(Math.sin(a)*R)+'px'; d.style.animationDelay=((i%2)*0.5)+'s'; el.appendChild(d); } }
+
+let spinning=false, pendingSsml=null;
+function runSpin(spin){ if(spinning) return; spinning=true; startWheel(spin); }
+function startWheel(spin){
+  const k=spin.seg;
+  const jitter=(Math.random()-0.5)*0.6;
+  const targetR=-(k+0.5+jitter)*SEG;
+  const turns=5+Math.floor(Math.random()*3);
+  let delta=(((targetR - rotation)%(2*Math.PI))+2*Math.PI)%(2*Math.PI);
+  const endRotation=rotation + turns*2*Math.PI + delta;
+  pendingSsml=spin.ssml||null;
+  const kf=[];
+  for(let i=0;i<=48;i++){ const t=i/48; kf.push({transform:`translateZ(0) rotate(${rotation+(endRotation-rotation)*easeOutQuart(t)}rad)`, offset:t}); }
+  const anim=wheel.animate(kf, {duration:DURATION*1000, easing:"linear", fill:"forwards"});
+  // reveal fires a touch before the wheel settles so the host narrates on the stop
+  setTimeout(()=>{ fetch(`${MCP}/reveal/${channel}`,{method:"POST"}).catch(()=>{}); L("reveal fired"); }, Math.max(0,(DURATION-0.4)*1000));
+  anim.onfinish=()=>{ try{anim.commitStyles&&anim.commitStyles();}catch(e){} anim.cancel();
+    rotation=endRotation%(2*Math.PI); applyRot(rotation); spinning=false;
+    setScore(spin.score);
+    if(pendingSsml){ playScene(pendingSsml); pendingSsml=null; }
+  };
+}
+/* ---------- score ---------- */
+let shownScore=0;
+const fmt=n=>Number(n).toLocaleString();
+function setScore(s){ if(typeof s==='number'){ shownScore=s; $('score').textContent=fmt(s); } }
+
+/* ---------- Trulience — MANUAL integration (our own Agora client owns mic + agent audio) ----------
+   Matches github.com/BenWeekes/agora-trulience-sdk: OUR Agora RTC client joins the channel,
+   publishes the mic, and subscribes the agent's audio (uid 100) -> trl.setMediaStream() so
+   Trulience plays it and lip-syncs. The avatar VIDEO comes from Trulience's OWN VBA media server
+   (useAgoraVideo:false), NOT the agent channel. This decouples mic + agent-audio from the SDK's
+   single-client agoraAgent path, whose 30s AGENT_AUDIO_TIMEOUT tore down mic AND audio together
+   whenever the gemini agent was slow/failed to produce its first audio. */
+let trl=null, trlReadyPoll=null, rtcClient=null, micTrack=null, agentAudioStream=null, cam=null;
+function loadScript(src){ return new Promise((res,rej)=>{ if(window.Trulience) return res(); const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error("sdk load failed")); document.head.appendChild(s); }); }
+async function initTrulience(ch){
+  await loadScript(TRL_SDK);
+  if(!window.Trulience){ L("Trulience global missing"); return; }
+
+  // 1) PRELOAD: fetch OUR rtc creds (user uid + token) WITHOUT starting the agent yet (connect=false)
+  L("start-agent connect=false (preload creds)");
+  let APPID,UID,TOKEN;
+  try{ const pre = await (await fetch(`${AGENT_EP}?profile=${PROFILE}&channel=${encodeURIComponent(ch)}&connect=false`)).json();
+    APPID=pre.appid; UID=String(pre.uid!=null?pre.uid:"101"); TOKEN=pre.token || (pre.user_token&&pre.user_token.token) || null;
+    L("creds appid="+(APPID||"").slice(0,8)+" uid="+UID+" token="+(TOKEN?"yes":"NO"));
+  }catch(e){ L("preload creds FAILED "+e.message); status("Error: creds"); return; }
+  if(!APPID||!TOKEN){ L("missing appid/token — abort"); status("Error: creds"); return; }
+
+  // 2) Trulience avatar from ITS OWN VBA server (no agoraAgent, no useAgoraVideo on our channel)
+  trl = window.Trulience.Builder()
+    .setAvatarId(TRL_AVATAR).setToken(null).setUserId(null).setUserName("Guest")
+    .enableAvatar(true).setRetry(false)
+    .registerVideoElements({ remoteVideo: "remoteVideo" })
+    .setEnvParams({ useAgoraVideo: false })
+    // inject the VBA chroma-key into the default scene (deep-merged into the avatar config) so the
+    // engine keys the olive backdrop out of the presenter video in its own render pass — transparent.
+    .setAvatarParams({ Scenes: { default: { ChromaKey: CHROMA } } })
+    .setExternalConfig({}).setIframeId(null)
+    .build();
+  L("chroma "+(CHROMA_OFF?"OFF":"on "+CHROMA.Color+" sim="+CHROMA.Similarity+" smooth="+CHROMA.Smoothness+" blur="+CHROMA.Blur));
+  trl.on('auth-success', ()=>{ L("trl auth-success -> connectGateway"); try{ trl.connectGateway(); }catch(e){ L("connectGateway err",e.message); } });
+  trl.on('auth-fail', e=>L("trl auth-fail", JSON.stringify(e||"")));
+  trl.on('websocket-connect', ()=>L("trl ws-connect"));
+  trl.on('websocket-close', ()=>L("trl ws-close"));
+  trl.on('websocket-error', e=>L("trl ws-error", JSON.stringify(e||"")));
+  trl.on('avatar-status-update', e=>L("trl avatar-status", JSON.stringify(e||"")));
+  trl.on('avatar-streaming', e=>{ L("trl avatar-streaming", JSON.stringify(e||"")); if(!e||e.ready){
+    enableSpeaker(); showAvatar();
+    setTimeout(()=>playScene(SCENE.smile), 1200); } });   // friendly smile only; gestures come from answers
+  trl.on('agent:error', e=>L("trl agent:error", JSON.stringify(e||"")));
+  trl.authenticate();
+
+  // 3) OUR Agora RTC client: join -> set up agent-audio subscribe -> publish mic
+  rtcClient = AgoraRTC.createClient({ mode:"rtc", codec:"vp8" });
+  rtcClient.on("connection-state-change", (c,p,reason)=>L("RTC conn "+p+"->"+c+(reason?" ("+reason+")":"")));
+  rtcClient.on("user-joined", u=>L("RTC user-joined uid="+u.uid));
+  rtcClient.on("user-left", (u,r)=>L("RTC user-left uid="+u.uid+" "+r));
+  rtcClient.on("user-published", async (user, mediaType)=>{
+    L("RTC user-published uid="+user.uid+" "+mediaType);
+    try{ await rtcClient.subscribe(user, mediaType); }catch(e){ L("RTC subscribe err "+e.message); return; }
+    if(mediaType==="audio"){
+      const mst = user.audioTrack && user.audioTrack.getMediaStreamTrack && user.audioTrack.getMediaStreamTrack();
+      if(mst){ agentAudioStream = new MediaStream([mst]);
+        try{ trl.setMediaStream(agentAudioStream); L("AGENT AUDIO -> trl.setMediaStream (uid="+user.uid+" track="+(mst.id||'').slice(0,6)+")"); }
+        catch(e){ L("setMediaStream err "+e.message); }
+        enableSpeaker(); meterStream(agentAudioStream);
+      } else L("user-published audio but no track");
+    }
+  });
+  rtcClient.on("user-unpublished", (user, mediaType)=>{ L("RTC user-unpublished uid="+user.uid+" "+mediaType);
+    if(mediaType==="audio"){ try{ trl.setMediaStream(null); }catch(e){} } });
+
+  L("RTC join uid="+UID);
+  try{ await rtcClient.join(APPID, ch, TOKEN, isNaN(+UID)?UID:+UID); L("RTC joined ok"); }
+  catch(e){ L("RTC join FAILED "+(e&&e.message||e)); status("Error: join"); return; }
+  // publish OUR mic (permission pre-granted on the Play gesture in start())
+  try{ micTrack = await AgoraRTC.createMicrophoneAudioTrack();
+    await rtcClient.publish([micTrack]); if(muted) await micTrack.setMuted(true);
+    L("MIC created+published (muted="+muted+")"); }
+  catch(e){ L("MIC create/publish FAILED "+(e&&e.name||e)+" — continuing (greeting still plays)"); }
+
+  // 4) NOW start the ConvoAI agent (connect=true) into our ready+subscribed client — greeting plays to us
+  L("start-agent connect=true (start agent)");
+  try{ const r=await (await fetch(`${AGENT_EP}?profile=${PROFILE}&channel=${encodeURIComponent(ch)}&connect=true`)).json();
+    L("agent start "+(r && (r.agent_response||r.agent) ? "ok" : JSON.stringify(r).slice(0,100))); }
+  catch(e){ L("start-agent connect=true FAILED "+e.message); }
+}
+// Render the Trulience WebGL avatar as-is (on its own background), on-screen bottom-right.
+// Reveal the avatar once Trulience has rendered it (WebGL <canvas>, or <video>) into #remoteVideo.
+// The engine's VBA ChromaKey keys the backdrop, so it composites over the wheel scene transparently.
+function showAvatar(tries=0){
+  const el=$('remoteVideo').querySelector('video, canvas');
+  const ready = el && (el.videoWidth || el.width);
+  if(!ready){ if(tries<80) setTimeout(()=>showAvatar(tries+1),150); return; }
+  $('avatarbox').style.opacity='1';
+  $('avatarload').style.display='none';
+  L("avatar shown "+el.tagName.toLowerCase()+" "+(el.videoWidth||el.width)+"x"+(el.videoHeight||el.height));
+}
+function playScene(ssml){ try{ if(ssml && trl && typeof trl.sendMessageToAvatar==='function'){ trl.sendMessageToAvatar(ssml); L("scene",ssml); } }catch(e){ L("scene err",e.message); } }
+// local camera self-view (preview only; not published to the channel)
+async function startSelfCam(){ try{ cam=await AgoraRTC.createCameraVideoTrack(); $('self').style.display='block'; cam.play('selfv'); L("self-cam on"); }catch(e){ L("self-cam off "+(e&&e.name||e)); } }
+// call every time (idempotent). Logs clean+silent runs both show setSpeakerEnabled succeeding, so
+// the real culprit is a SUSPENDED AudioContext on re-connect — resume it explicitly and log its state.
+function enableSpeaker(){ try{ if(!trl) return;
+    const ac = trl.getAudioContext && trl.getAudioContext();
+    if(ac && ac.state!=='running'){ ac.resume().then(()=>L("audioCtx resumed")).catch(e=>L("audioCtx resume FAIL "+e.message)); }
+    if(typeof trl.setSpeakerEnabled==='function'){ trl.setSpeakerEnabled(true); L("speaker enable() ctx="+(ac?ac.state:'?')); }
+  }catch(e){ L("speaker err",e.message); } }
+// any click/tap is a fresh user gesture — retry the speaker (covers the autoplay/gesture race)
+document.addEventListener('click', ()=>{ enableSpeaker(); }, true);
+document.addEventListener('touchend', ()=>{ enableSpeaker(); }, true);
+// measure the agent audio stream's level: distinguishes "stream silent (greeting lost / agent not speaking)"
+// from "has sound but not playing". Analyser only — does NOT route to output, so playback is unaffected.
+function meterStream(stream){ try{ if(!stream) return;
+  const AC=window.AudioContext||window.webkitAudioContext; const actx=new AC();
+  const srcN=actx.createMediaStreamSource(stream); const an=actx.createAnalyser(); an.fftSize=512; srcN.connect(an);
+  const buf=new Uint8Array(an.fftSize); let peak=0,n=0;
+  const iv=setInterval(()=>{ an.getByteTimeDomainData(buf); let m=0; for(let i=0;i<buf.length;i++){ const dd=Math.abs(buf[i]-128); if(dd>m)m=dd; } if(m>peak)peak=m; n++;
+    if(n%15===0) L("AUDIO level peak="+peak); }, 200);
+  setTimeout(()=>{ clearInterval(iv); L("AUDIO level FINAL peak="+peak+(peak<4?" => SILENT (agent produced no audio)":" => has sound")); try{actx.close();}catch(_){}} , 12000);
+}catch(err){ L("meter err "+err.message); } }
+
+/* ---------- game state + session lifecycle ---------- */
+let channel="", lastSeq=0, lastScoreSeq=0, poll=null, capTimer=null, muted=false;
+const CAP_MS=180000;
+function fitScale(){ const h=window.innerHeight; $('wheelwrap').style.setProperty('--scale', Math.min(1,(h*0.66)/420).toFixed(3)); }
+window.addEventListener('resize',fitScale);
+
+async function start(){
+  $('startBtn').disabled=true; status("Starting…");
+  // pre-grant mic NOW while we still hold the Play gesture, so the createMicrophoneAudioTrack later
+  // (after loadScript + creds fetch awaits) can't race/lose the permission prompt. Release the probe
+  // track immediately — we only want the grant; the real capture track is created after we join.
+  try{ const g=await navigator.mediaDevices.getUserMedia({audio:true}); g.getTracks().forEach(t=>t.stop()); L("mic pre-granted"); }
+  catch(e){ L("mic pre-grant FAILED "+(e&&e.name||e)); }
+  channel=new URLSearchParams(location.search).get('channel') || ("qt"+Math.random().toString(36).slice(2,9));
+  try{
+    poll=setInterval(pollState,250);
+    try{ const s=await (await fetch(`${MCP}/state/${channel}`)).json(); setScore(s.score); }catch(e){}
+    startSelfCam();   // local webcam preview (own circle, bottom-left)
+    await initTrulience(channel);
+    $('start').style.display='none'; $('controls').style.display='flex'; $('avatarload').style.display='flex';
+    status("");
+    capTimer=setTimeout(async()=>{ await stop();
+      $('start').style.display='flex'; $('startBtn').disabled=false; $('startBtn').textContent='Play again';
+      status("Session ended — press Play again."); }, CAP_MS);
+  }catch(e){ status("Error: "+(e.message||e)); $('startBtn').disabled=false; $('start').style.display='flex'; }
+}
+// the wheel/score is driven by polling the MCP state (spin + reveal are MCP tool calls); a second
+// RTM client isn't needed and would collide with Trulience's own RTM on the agent channel.
+async function pollState(){
+  try{ const s=await (await fetch(`${MCP}/state/${channel}`)).json();
+    if(s.lastSpin && s.lastSpin.seq && s.lastSpin.seq!==lastSeq && !spinning){ lastSeq=s.lastSpin.seq; runSpin(s.lastSpin); return; }
+    // a scored answer -> gesture by correctness (a wrong answer adds 0 points, so the score alone
+    // can't tell right from wrong — we read the outcome the MCP records in lastScore).
+    if(s.lastScore && s.lastScore.seq && s.lastScore.seq!==lastScoreSeq && !spinning){
+      lastScoreSeq=s.lastScore.seq; setScore(s.lastScore.score);
+      playScene(s.lastScore.correct ? SCENE.thumbup : SCENE.shrug); return; }
+    if(typeof s.score==='number' && s.score!==shownScore && !spinning) setScore(s.score);
+  }catch(e){}
+}
+$('muteBtn').onclick=async()=>{ muted=!muted; try{ if(micTrack) await micTrack.setMuted(muted); L("mic setMuted "+muted); }catch(e){ L("mute err",e.message); } $('muteBtn').textContent=muted?'Unmute':'Mute'; };
+// let the RTC leave + agent hangup settle before reloading for a clean next session
+$('hangupBtn').onclick=async()=>{ $('hangupBtn').disabled=true; status("Leaving…"); await stop(); setTimeout(()=>location.reload(), 1200); };
+async function stop(){
+  if(poll) clearInterval(poll); if(capTimer) clearTimeout(capTimer); if(trlReadyPoll) clearInterval(trlReadyPoll);
+  try{ $('avatarbox').style.opacity='0'; $('avatarload').style.display='none'; $('self').style.display='none'; }catch(e){}
+  // tear down OUR Agora client + mic + camera preview (we own them in manual mode)
+  try{ if(cam){ cam.stop(); cam.close(); cam=null; } }catch(e){}
+  try{ if(micTrack){ micTrack.stop(); micTrack.close(); micTrack=null; } }catch(e){}
+  try{ if(rtcClient){ await rtcClient.leave(); rtcClient=null; L("RTC left"); } }catch(e){ L("RTC leave err",e.message); }
+  agentAudioStream=null;
+  try{ if(trl){ trl.setMediaStream&&trl.setMediaStream(null); trl.disconnectGateway&&trl.disconnectGateway(); trl=null; } }catch(e){}
+  // stop the ConvoAI agent by channel (we started it via connect=true) so it doesn't linger
+  try{ if(channel){ navigator.sendBeacon ? navigator.sendBeacon(`${BACKEND}/hangup-channel?channel=${encodeURIComponent(channel)}&profile=${PROFILE}`)
+        : await fetch(`${BACKEND}/hangup-channel?channel=${encodeURIComponent(channel)}&profile=${PROFILE}`); } }catch(e){}
+}
+window.addEventListener('pagehide',()=>stop());
+window.addEventListener('beforeunload',()=>stop());
+
+/* init */
+drawWheel(); buildLights(); applyRot(0); fitScale();
+$('stage').style.backgroundImage="url(aw.png)";   // set immediately so the stage shows at once
+$('startBtn').onclick=start;
+</script>
+</body></html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puppet — Talk</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;}
+  body{background:#0d0d0f;min-height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;text-align:center;}
+  h1{font-size:20px;margin:0;}
+  p{color:#9aa;margin:0;max-width:560px;}
+  button{border:0;border-radius:10px;padding:14px 28px;font-weight:700;font-size:16px;cursor:pointer;background:#4a7dff;color:#fff;}
+  button.stop{background:#c23b3b;}
+  button:disabled{opacity:.5;cursor:default;}
+  .live{display:none;flex-direction:column;align-items:center;gap:14px;}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#5fd08a;margin-right:6px;animation:pulse 1.2s infinite;}
+  @keyframes pulse{50%{opacity:.3;}}
+  .meter{width:260px;height:12px;background:#17171b;border:1px solid #2a2a30;border-radius:7px;overflow:hidden;}
+  .meter > div{height:100%;width:0;background:linear-gradient(90deg,#4a7dff,#5fd08a);}
+  .share{background:#17171b;border:1px solid #2a2a30;border-radius:10px;padding:12px 14px;max-width:620px;word-break:break-all;}
+  .share a{color:#8fb8ff;}
+  input{width:100%;padding:8px;border-radius:7px;border:1px solid #33333b;background:#101014;color:#eee;font-size:13px;margin-top:6px;}
+  .msg{font-size:13px;color:#ff9a9a;min-height:16px;}
+  .t{color:#9aa;font-size:13px;}
+</style></head>
+<body>
+  <h1>📡 Broadcast your avatar</h1>
+  <p>Press below to go live. Your voice drives a LemonSlice avatar in real time — share the watch link so others can see it animate.</p>
+  <button id="go">Go live</button>
+  <div class="live" id="livebox">
+    <div><span class="dot"></span><b>You are live</b> — speak now</div>
+    <div class="meter"><div id="lvl"></div></div>
+    <div class="share">Watch link (share this):<input id="watch" readonly onclick="this.select()"></div>
+    <div class="t" id="count"></div>
+    <div style="display:flex;gap:10px;">
+      <button id="mute">🔇 Mute</button>
+      <button class="stop" id="stop">Stop</button>
+    </div>
+  </div>
+  <div class="msg" id="msg"></div>
+<script>
+  const API="/puppet";
+  let client=null, mic=null, sid=null, room='', meterIv=null, countIv=null;
+  const $=id=>document.getElementById(id);
+  const msg=t=>$('msg').textContent=t||'';
+  // Broadcaster just stops publishing / leaves — it does NOT end the session
+  // (the viewer owns that and ends it on Hang up; the 5-min cap is the backstop).
+  async function stop(){
+    try{ if(mic){mic.close();} if(client){await client.leave();} }catch(e){}
+    clearInterval(meterIv); clearInterval(countIv);
+  }
+  $('go').onclick=async()=>{
+    $('go').disabled=true; msg('Starting…');
+    try{
+      const urlRoom=new URLSearchParams(location.search).get('room')||'';
+      const d=await (await fetch(API+'/start'+(urlRoom?('?room='+encodeURIComponent(urlRoom)):''),{method:'POST'})).json();
+      if(!d.channel) throw new Error(d.error||'start failed');
+      sid=d.sessionId;
+      room = (d.channel.indexOf('ppti')===0) ? d.channel.slice(4) : '';
+      client=AgoraRTC.createClient({mode:"live",codec:"vp8"});
+      await client.setClientRole("host");
+      await client.join(d.appId,d.channel,d.publisher.token,d.publisher.uid);
+      mic=await AgoraRTC.createMicrophoneAudioTrack();
+      await client.publish([mic]);
+      $('watch').value=location.origin+d.watchPath;
+      $('go').style.display='none'; $('livebox').style.display='flex'; msg('');
+      meterIv=setInterval(()=>{ const v=mic?mic.getVolumeLevel():0; $('lvl').style.width=Math.min(100,Math.round(v*160))+'%'; },120);
+      $('count').textContent='🔴 Broadcasting — the viewer controls the avatar & ends the session (5-min cap).';
+    }catch(e){ msg('Error: '+(e.message||e)); $('go').disabled=false; }
+  };
+  let muted=false;
+  $('mute').onclick=async()=>{
+    if(!mic) return;
+    muted=!muted;
+    try{ await mic.setMuted(muted); }catch(e){}
+    $('mute').textContent = muted ? '🎙 Unmute' : '🔇 Mute';
+    $('mute').style.background = muted ? '#c23b3b' : '#4a7dff';
+  };
+  $('stop').onclick=async()=>{ await stop(); location.reload(); };
+  window.addEventListener('pagehide',()=>stop());
+  window.addEventListener('beforeunload',()=>stop());
+</script>
+</body></html>

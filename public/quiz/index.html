@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz Wheel — voice</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<script src="../agora-rtm.js"></script>
+<script src="../chroma.js"></script>
+<style>
+  :root{ --key:#80A55E; }
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;}
+  body{background:#07070a;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;overflow:hidden;}
+  #stage{position:fixed;inset:0;background:#07070a center/cover no-repeat;display:flex;align-items:center;justify-content:center;}
+  #stage::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,transparent 40%,rgba(0,0,0,.45));pointer-events:none;}
+
+  #balancePill{position:absolute;top:18px;left:50%;transform:translateX(-50%);z-index:30;text-align:center;
+    background:linear-gradient(#1b1b22,#0d0d12);border:2px solid #4ea8ff;border-radius:40px;
+    padding:10px 26px;font-weight:800;font-size:26px;color:#cfe8ff;box-shadow:0 6px 20px rgba(0,0,0,.5);letter-spacing:.5px;}
+  #balancePill .lbl{font-size:11px;color:#7fb0d8;display:block;text-align:center;letter-spacing:2px;font-weight:700;}
+  #balancePill #score{display:block;text-align:center;}
+
+  /* wheel — centred */
+  #wheelwrap{position:relative;z-index:10;transform:scale(var(--scale,1));transform-origin:center;}
+  #wheel{display:block;width:380px;height:380px;border-radius:50%;
+    box-shadow:0 0 0 8px #10233a, 0 0 0 13px #4ea8ff, 0 18px 50px rgba(0,0,0,.7);}
+  #hub{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;z-index:12;
+    background:radial-gradient(circle at 35% 30%,#fff,#8fc6ff 60%,#2a6bb0);box-shadow:0 3px 10px rgba(0,0,0,.6);}
+  #ptr{position:absolute;left:50%;top:-16px;transform:translateX(-50%);z-index:14;width:36px;height:48px;
+    filter:drop-shadow(0 3px 4px rgba(0,0,0,.6));}
+  /* ring of spotlights around the rim */
+  #lights{position:absolute;left:50%;top:50%;width:0;height:0;z-index:13;pointer-events:none;}
+  #lights .lt{position:absolute;width:12px;height:12px;border-radius:50%;margin:-6px;
+    background:radial-gradient(circle,#fff,#8fd0ff 55%,rgba(0,140,255,0));
+    box-shadow:0 0 10px 3px rgba(90,180,255,.85);animation:blink 1s infinite;}
+  @keyframes blink{50%{opacity:.2;box-shadow:0 0 3px 1px rgba(90,180,255,.35);}}
+
+  #cv{position:absolute;right:-5%;bottom:0;height:58%;aspect-ratio:1/1;width:auto;z-index:20;pointer-events:none;
+     filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));}
+  #src{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;left:-10px;}
+  #avatarload{display:none;position:absolute;right:11%;bottom:30%;z-index:21;flex-direction:column;align-items:center;gap:12px;
+    color:#cfe8ff;font-weight:600;font-size:14px;text-shadow:0 2px 6px rgba(0,0,0,.8);}
+  #avatarload .spin{width:54px;height:54px;border-radius:50%;border:5px solid rgba(255,255,255,.25);border-top-color:#4ea8ff;animation:ld .9s linear infinite;}
+  @keyframes ld{to{transform:rotate(360deg);}}
+
+  #self{position:absolute;left:26px;bottom:26px;width:150px;height:150px;border-radius:50%;overflow:hidden;z-index:25;
+    border:3px solid rgba(255,255,255,.8);box-shadow:0 8px 22px rgba(0,0,0,.5);background:#111;display:none;}
+  #self video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+
+  #winBanner{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:40;opacity:0;
+    font-weight:900;font-size:46px;text-shadow:0 0 18px #2a7fff,0 4px 0 #103a6a;transition:all .3s;pointer-events:none;text-align:center;}
+  #winBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+
+  #controls{position:absolute;bottom:64px;left:50%;transform:translateX(-50%);z-index:30;display:flex;gap:12px;align-items:center;}
+  button{border:0;border-radius:10px;padding:13px 22px;font-weight:700;font-size:15px;cursor:pointer;color:#fff;}
+  button:active{transform:translateY(2px);}
+  #controls button{min-width:150px;background:#1f5fa8;box-shadow:0 4px 0 #113963;}
+  #controls button:active{box-shadow:0 2px 0 #113963;}
+  button:disabled{opacity:.5;cursor:default;}
+  #start{position:absolute;inset:0;z-index:50;background:rgba(5,5,9,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;}
+  #start p{color:#b9bac6;max-width:470px;text-align:center;margin:0;line-height:1.5;}
+  #startBtn{font-size:20px;padding:16px 40px;background:#2a7fff;box-shadow:0 5px 0 #124a93;}
+  #status{position:absolute;bottom:46px;left:50%;transform:translateX(-50%);z-index:30;font-size:12px;color:#8a8a98;min-height:14px;}
+  #hud{display:none;position:absolute;top:8px;left:8px;z-index:60;margin:0;max-width:46%;max-height:60%;overflow:auto;
+    background:rgba(0,0,0,.72);color:#8fe08f;font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px;border-radius:8px;white-space:pre-wrap;}
+</style></head>
+<body>
+<div id="stage">
+  <div id="balancePill"><span class="lbl">SCORE</span><span id="score">0</span></div>
+  <div id="winBanner"></div>
+
+  <div id="wheelwrap">
+    <div id="lights"></div>
+    <svg id="ptr" viewBox="0 0 40 52"><path d="M20 50 L4 10 Q20 -2 36 10 Z" fill="#fff"/><circle cx="20" cy="12" r="4" fill="#1a1a24"/></svg>
+    <canvas id="wheel" width="920" height="920"></canvas>
+    <div id="hub"></div>
+  </div>
+
+  <video id="src" muted playsinline autoplay></video>
+  <canvas id="cv" width="512" height="512"></canvas>
+  <div id="avatarload"><div class="spin"></div><div>Loading your host…</div></div>
+  <div id="self"><video id="selfv" muted playsinline autoplay></video></div>
+
+  <div id="controls" style="display:none;">
+    <button id="muteBtn">Mute</button>
+    <button id="hangupBtn">Leave</button>
+  </div>
+  <div id="status"></div>
+  <pre id="hud"></pre>
+
+  <div id="start">
+    <p>Play the <b>Quiz Wheel</b> with your voice. Say <b>“spin”</b> to land on a trivia category, then answer the host’s question to score <b>+100 points</b>. Hit <b>Extra Points</b> to leap ahead — or <b>Lose Points</b> and give some back!</p>
+    <button id="startBtn">Start playing</button>
+    <p style="font-size:12px;color:#777;">Allow microphone (and camera for your window) when prompted.</p>
+  </div>
+</div>
+
+<script>
+const BACKEND="/simple-backend", MCP="/quiz-mcp", PROFILE="quiz_play";
+// chroma tuning (live): ?sim=0.13&smooth=0.12&spill=0.34&key=02F304
+//   halo/green fringe? -> raise spill and/or lower smoothness; sim is the base key radius.
+// Passing ?key=<hex> pins the key colour (skips autoKey, which otherwise samples the live bg).
+const _qp=new URLSearchParams(location.search);
+const CK_KEY=_qp.get('key');
+const CK={ keyColor:"#"+((CK_KEY||"02F304").replace(/^#/,'')),
+  similarity:parseFloat(_qp.get('sim')||"0.20"),
+  smoothness:parseFloat(_qp.get('smooth')||"0.12"),
+  spill:parseFloat(_qp.get('spill')||"0.34") };
+const $=id=>document.getElementById(id);
+const status=t=>{ $('status').textContent=t||""; };
+const DEBUG=new URLSearchParams(location.search).has('debug');
+const L=(...a)=>{ try{console.log("[quiz]",...a);}catch(e){}
+  if(DEBUG){ const h=$('hud'); if(h){ h.style.display='block';
+    h.textContent=(new Date().toISOString().slice(11,19)+" "+a.join(" ")+"\n"+h.textContent).slice(0,2000);} } };
+window.addEventListener('error',e=>L("ERR",e.message));
+window.addEventListener('unhandledrejection',e=>L("REJ",(e.reason&&e.reason.message)||e.reason));
+
+/* ---------- wheel (fixed segments, must match quiz-mcp order) ---------- */
+const SEGMENTS=["SCIENCE","EXTRA POINTS","HISTORY","SPORTS","LOSE POINTS","GEOGRAPHY","MUSIC","EXTRA POINTS","MOVIES","NATURE","FOOD","TECH"];
+const N=SEGMENTS.length, SEG=2*Math.PI/N, DURATION=4.6;
+const wheel=$('wheel'), wx=wheel.getContext('2d');
+// Smooth equal-gap rainbow around the whole wheel (visible-spectrum / pride feel) —
+// every slice an even hue step apart; the specials read from their LABELS, not colour.
+function segColor(l,i){ return `hsl(${Math.round(i*360/N)},90%,55%)`; }
+function darkenHsl(c,dl){ const m=c.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/); return m?`hsl(${m[1]},${m[2]}%,${Math.max(8,+m[3]-dl)}%)`:c; }
+// One font size that fits EVERY label — so all slices use the same consistent size.
+function fitLabelFont(R){
+  const maxLen=R*0.72;
+  wx.textAlign="right"; wx.textBaseline="middle";
+  for(let fs=30; fs>10; fs--){ wx.font=`800 ${fs}px system-ui,sans-serif`;
+    if(SEGMENTS.every(s=>wx.measureText(s).width<=maxLen)) return fs; }
+  return 11;
+}
+function drawWheel(){
+  const S=wheel.width, cx=S/2, cy=S/2, R=S/2-8;
+  wx.clearRect(0,0,S,S); wx.save(); wx.translate(cx,cy);
+  const LFS=fitLabelFont(R);
+  for(let i=0;i<N;i++){
+    const a0=i*SEG-Math.PI/2, a1=a0+SEG, base=segColor(SEGMENTS[i], i);
+    const g=wx.createRadialGradient(0,0,R*0.15,0,0,R);
+    g.addColorStop(0,base); g.addColorStop(1,darkenHsl(base,26));
+    wx.beginPath(); wx.moveTo(0,0); wx.arc(0,0,R,a0,a1); wx.closePath(); wx.fillStyle=g; wx.fill();
+    wx.strokeStyle="rgba(0,0,0,.35)"; wx.lineWidth=2; wx.stroke();
+    const mid=a0+SEG/2;
+    wx.save(); wx.rotate(mid);
+    wx.font=`800 ${LFS}px system-ui,sans-serif`; wx.textAlign="right"; wx.textBaseline="middle";
+    wx.fillStyle="#fff"; wx.shadowColor="rgba(0,0,0,.75)"; wx.shadowBlur=4;
+    wx.fillText(SEGMENTS[i], R-20, 0);
+    wx.restore();
+  }
+  wx.beginPath(); wx.arc(0,0,R,0,2*Math.PI); wx.lineWidth=5; wx.strokeStyle="rgba(255,255,255,.2)"; wx.stroke();
+  wx.restore();
+}
+let rotation=0;
+function applyRot(r){ wheel.style.transform=`translateZ(0) rotate(${r}rad)`; }
+function easeOutQuart(t){ return 1-Math.pow(1-t,4); }
+function buildLights(){
+  const el=$('lights'); if(!el) return; el.innerHTML='';
+  const R=190+18, n=28;
+  for(let i=0;i<n;i++){ const a=(i/n)*2*Math.PI;
+    const d=document.createElement('div'); d.className='lt';
+    d.style.left=(Math.cos(a)*R)+'px'; d.style.top=(Math.sin(a)*R)+'px';
+    d.style.animationDelay=((i%2)*0.5)+'s'; el.appendChild(d); }
+}
+function autoKey(){
+  try{ const v=$('src'); if(!v||!v.videoWidth||!renderer) return;
+    const c=document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
+    const g=c.getContext('2d'); g.drawImage(v,0,0,c.width,c.height);
+    const pts=[[3,3],[c.width-4,3],[3,c.height-4],[c.width-4,c.height-4],[c.width>>1,3]];
+    let r=0,gg=0,b=0,k=0;
+    for(const [x,y] of pts){ const d=g.getImageData(x,y,1,1).data; r+=d[0];gg+=d[1];b+=d[2];k++; }
+    const hex="#"+[r/k,gg/k,b/k].map(x=>Math.round(x).toString(16).padStart(2,'0')).join('');
+    renderer.setKeyColor(hex); L("autoKey",hex);
+  }catch(e){ L("autoKey err",e.message); }
+}
+
+let spinning=false;
+function runSpin(spin){ if(spinning) return; spinning=true; startWheel(spin); }
+function startWheel(spin){
+  const k=spin.seg;
+  const jitter=(Math.random()-0.5)*0.6;
+  const targetR=-(k+0.5+jitter)*SEG;
+  const turns=5+Math.floor(Math.random()*3);
+  let delta=(((targetR - rotation)%(2*Math.PI))+2*Math.PI)%(2*Math.PI);
+  const endRotation=rotation + turns*2*Math.PI + delta;
+  const kf=[];
+  for(let i=0;i<=48;i++){ const t=i/48; kf.push({transform:`translateZ(0) rotate(${rotation+(endRotation-rotation)*easeOutQuart(t)}rad)`, offset:t}); }
+  const anim=wheel.animate(kf, {duration:DURATION*1000, easing:"linear", fill:"forwards"});
+  revealWhenQuiet(DURATION);
+  anim.onfinish=()=>{ try{anim.commitStyles&&anim.commitStyles();}catch(e){} anim.cancel();
+    rotation=endRotation%(2*Math.PI); applyRot(rotation); spinning=false;
+    setScore(spin.score); showOutcome(spin);
+  };
+}
+function showOutcome(spin){ /* no on-screen banners — only the wheel + the score pill */ }
+/* ---------- reveal gate (fire the cue ~REVEAL_LEAD before the wheel stops, once she's quiet) ---------- */
+const REVEAL_LEAD=1.3;
+function revealWhenQuiet(duration){
+  const t0=Date.now(), earliest=Math.max(0,(duration-REVEAL_LEAD))*1000, maxMs=duration*1000+1200;
+  let quietSince=0, fired=false;
+  (function wait(){
+    if(fired) return;
+    const el=Date.now()-t0;
+    const vol=(agentAudio&&agentAudio.getVolumeLevel)?agentAudio.getVolumeLevel():0;
+    if(vol<0.03){ if(!quietSince) quietSince=Date.now(); } else quietSince=0;
+    const quietEnough=quietSince && (Date.now()-quietSince)>=150;
+    if((el>=earliest && quietEnough) || el>=maxMs){ fired=true; L("reveal fired","el="+el);
+      fetch(`${MCP}/reveal/${channel}`,{method:"POST"}).catch(()=>{}); }
+    else setTimeout(wait,60);
+  })();
+}
+/* ---------- score / banner ---------- */
+let shownScore=0;
+const fmt=n=>Number(n).toLocaleString();
+function setScore(s){ if(typeof s==='number'){ shownScore=s; $('score').textContent=fmt(s); } }
+function banner(t,color){ const b=$('winBanner'); b.textContent=t; b.style.color=color||"#cfe8ff";
+  b.classList.add('show'); setTimeout(()=>b.classList.remove('show'),2600); }
+
+/* ---------- Agora + session (same proven glue as the wheel demo) ---------- */
+let client=null, mic=null, cam=null, renderer=null, channel="", agentId=null, avatarUid=null, poll=null, capTimer=null, lastSeq=0, muted=false, agentAudio=null, rtm=null;
+const CAP_MS=180000;
+function fitScale(){ const h=window.innerHeight; $('wheelwrap').style.setProperty('--scale', Math.min(1,(h*0.66)/420).toFixed(3)); }
+window.addEventListener('resize',fitScale);
+
+async function start(){
+  $('startBtn').disabled=true; status("Starting…");
+  channel=new URLSearchParams(location.search).get('channel') || ("qz"+Math.random().toString(36).slice(2,9));
+  try{
+    const r=await fetch(`${BACKEND}/start-agent?profile=${PROFILE}&channel=${encodeURIComponent(channel)}&turn_detection_start_of_speech_sensitivity=START_SENSITIVITY_LOW&turn_detection_end_of_speech_sensitivity=END_SENSITIVITY_LOW&turn_detection_silence_duration_ms=600&turn_detection_prefix_padding_ms=500`);
+    const d=await r.json();
+    if(!d.appid) throw new Error(d.error||"start failed");
+    agentId=parseAgentId(d);
+    avatarUid=String((d.agent_video_token&&d.agent_video_token.uid));
+    const token=(d.user_token&&d.user_token.token)||d.token;
+    let uid=(d.user_token&&d.user_token.uid)!=null?d.user_token.uid:d.uid;
+    if(!d.enable_string_uid) uid=Number(uid);
+    client=AgoraRTC.createClient({mode:"rtc",codec:"vp8"});
+    window.__client=client; window.__ch=channel;
+    client.on("user-published", onPublished);
+    client.on("user-joined", u=>L("user-joined",u.uid));
+    await client.join(d.appid, channel, token, uid);
+    L("joined",channel,"as",uid);
+    mic=await AgoraRTC.createMicrophoneAudioTrack();
+    await client.publish([mic]); L("mic published");
+    startSelfCam();
+    $('start').style.display='none'; $('controls').style.display='flex';
+    $('cv').style.display=''; $('avatarload').style.display='flex';
+    status("");
+    try{ const s=await (await fetch(`${MCP}/state/${channel}`)).json(); setScore(s.score); }catch(e){}
+    try{ await connectRtm(d.appid, d.user_rtm_uid, token); }
+    catch(e){ L("rtm failed -> polling", e.message); poll=setInterval(pollState,300); }
+    capTimer=setTimeout(async()=>{ await stop();
+      $('start').style.display='flex'; $('startBtn').disabled=false; $('startBtn').textContent='Play again';
+      status("Session ended — press Play again."); }, CAP_MS);
+  }catch(e){ status("Error: "+(e.message||e)); $('startBtn').disabled=false; $('start').style.display='flex'; }
+}
+function parseAgentId(d){ try{ const resp=d.agent_response&&d.agent_response.response;
+  const o=typeof resp==='string'?JSON.parse(resp):resp; return (o&&(o.agent_id||o.agentId))||null; }catch(e){ return null; } }
+async function onPublished(user, mediaType){
+  await client.subscribe(user, mediaType);
+  if(mediaType==="audio"){ agentAudio=user.audioTrack; try{ user.audioTrack.play(); }catch(e){} return; }
+  if(mediaType==="video" && String(user.uid)===avatarUid){
+    const src=$('src'); src.srcObject=new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+    try{ await src.play(); }catch(e){}
+    if(!renderer) renderer=new ChromaKeyRenderer($('cv'), CK);
+    renderer.start(src); $('avatarload').style.display='none'; L("avatar rendered chroma sim="+CK.similarity+" smooth="+CK.smoothness+" spill="+CK.spill);
+    if(!CK_KEY){ setTimeout(autoKey,900); setTimeout(autoKey,1800); setTimeout(autoKey,3200); } else L("key pinned "+CK.keyColor);
+  }
+}
+async function connectRtm(appid, rtmUid, rtmToken){
+  rtm=new AgoraRTM.RTM(appid, String(rtmUid), {logLevel:"warn"});
+  await rtm.login({token: rtmToken});
+  await rtm.subscribe(channel, {withMessage:true, withPresence:false});
+  rtm.addEventListener("message", onRtm); L("rtm connected", rtmUid);
+}
+function onRtm(e){
+  try{
+    const m=(typeof e.message==="string")?JSON.parse(e.message):e.message; if(!m) return;
+    if(m.object==="quiz.spin"){ if(m.seq && m.seq!==lastSeq && !spinning){ lastSeq=m.seq; runSpin(m); } }
+    else if(m.object==="quiz.score"){
+      if(m.reset){ lastSeq=0; setScore(m.score); }
+      else if(!spinning && typeof m.score==='number'){ setScore(m.score); }
+    }
+  }catch(err){ L("rtm msg err", err.message); }
+}
+async function pollState(){
+  try{ const s=await (await fetch(`${MCP}/state/${channel}`)).json();
+    if(s.lastSpin && s.lastSpin.seq && s.lastSpin.seq!==lastSeq && !spinning){ lastSeq=s.lastSpin.seq; runSpin(s.lastSpin); }
+    else if(typeof s.score==='number' && s.score!==shownScore && !spinning){ setScore(s.score); }
+  }catch(e){}
+}
+async function startSelfCam(){ try{ cam=await AgoraRTC.createCameraVideoTrack(); $('self').style.display='block'; cam.play('selfv'); }catch(e){} }
+$('muteBtn').onclick=async()=>{ if(!mic)return; muted=!muted; try{await mic.setMuted(muted);}catch(e){} $('muteBtn').textContent=muted?'Unmute':'Mute'; };
+$('hangupBtn').onclick=async()=>{ await stop(); location.reload(); };
+async function stop(){
+  if(poll) clearInterval(poll); if(capTimer) clearTimeout(capTimer);
+  try{ renderer&&renderer.stop(); }catch(e){}
+  try{ $('cv').style.display='none'; $('avatarload').style.display='none'; $('self').style.display='none'; const sv=$('src'); if(sv) sv.srcObject=null; }catch(e){}
+  try{ if(rtm){ await rtm.logout(); rtm=null; } }catch(e){}
+  try{ if(agentId) await fetch(`${BACKEND}/hangup-agent?agent_id=${encodeURIComponent(agentId)}&channel=${encodeURIComponent(channel)}&profile=${PROFILE}`); }catch(e){}
+  try{ mic&&mic.close(); cam&&cam.close(); if(client) await client.leave(); }catch(e){}
+}
+window.addEventListener('pagehide',()=>stop());
+window.addEventListener('beforeunload',()=>stop());
+
+/* init */
+drawWheel(); buildLights(); applyRot(0); fitScale();
+(function(){ const bg=new Image(); bg.onload=()=>$('stage').style.backgroundImage="url(aw.png)"; bg.src="aw.png"; })();
+$('startBtn').onclick=start;
+</script>
+</body></html>

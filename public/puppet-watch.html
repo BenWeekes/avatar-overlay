@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puppet — Watch</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+<style>
+  :root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;height:100%;}
+  body{background:#0d0d0f;height:100vh;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;}
+  #video{width:100%;max-width:480px;aspect-ratio:2/3;max-height:62vh;background:#000;border-radius:12px;overflow:hidden;}
+  .lbl{font-size:13px;color:#9aa;}
+  .pick{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+  .pick img{width:62px;height:82px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid transparent;opacity:.65;}
+  .pick img.on{border-color:#4a7dff;opacity:1;}
+  .pick img:hover{opacity:1;}
+  .msg{color:#9aa;font-size:14px;min-height:18px;text-align:center;}
+  .row{display:flex;gap:10px;}
+  button{border:0;border-radius:10px;padding:12px 24px;font-weight:700;font-size:15px;cursor:pointer;background:#4a7dff;color:#fff;}
+  button.hang{background:#c23b3b;}
+  button:disabled{opacity:.5;cursor:default;}
+</style></head>
+<body>
+  <div id="video"></div>
+  <div class="lbl">1. Choose an avatar</div>
+  <div class="pick" id="pick"></div>
+  <div class="msg" id="msg">Choose an avatar, then press Watch.</div>
+  <div class="row">
+    <button id="join">▶ Watch</button>
+    <button id="hang" class="hang" style="display:none;">⏹ Hang up</button>
+  </div>
+<script>
+  const API="/puppet";
+  const $=id=>document.getElementById(id);
+  const ch=new URLSearchParams(location.search).get('channel')||'';
+  const room=(ch.indexOf('ppto')===0)?ch.slice(4):ch;
+  const msg=t=>$('msg').textContent=t||'';
+  let client=null, avatarUid=102, curImg=null, switching=false;
+  if(!ch){ msg('Missing ?channel='); $('join').style.display='none'; }
+
+  async function buildPicker(){
+    try{
+      const d=await (await fetch(API+'/avatars')).json();
+      $('pick').innerHTML='';
+      d.avatars.forEach(a=>{
+        const im=document.createElement('img'); im.src=a.url; im.dataset.key=a.key; im.title='Avatar '+a.key.toUpperCase();
+        im.onclick=()=>selectAvatar(a.key);
+        $('pick').append(im);
+      });
+    }catch(e){ msg('Could not load avatars.'); }
+  }
+  // Selecting an avatar starts (or switches) the LemonSlice session so it begins
+  // loading the image BEFORE you press Watch.
+  async function selectAvatar(key){
+    if(switching) return;
+    switching=true; curImg=key;
+    [...$('pick').children].forEach(im=>im.classList.toggle('on', im.dataset.key===key));
+    msg('Avatar loading… press Watch when ready.');
+    try{ await fetch(API+'/start?room='+encodeURIComponent(room)+'&img='+encodeURIComponent(key),{method:'POST'}); }catch(e){}
+    setTimeout(()=>{switching=false;},1200);
+  }
+
+  async function hangup(){
+    // end the LemonSlice session (stop the avatar), then leave the view
+    try{ await fetch(API+'/stop',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({room})}); }catch(e){}
+    try{ if(client){ await client.leave(); } }catch(e){}
+    client=null; curImg=null; $('video').innerHTML='';
+    [...$('pick').children].forEach(im=>im.classList.remove('on'));
+    $('hang').style.display='none'; $('join').style.display=''; $('join').disabled=false;
+    msg('Stopped. Choose an avatar and Watch again.');
+  }
+  $('hang').onclick=hangup;
+  // also end the session if the viewer just closes the tab
+  window.addEventListener('pagehide',()=>{ try{ if(client){ navigator.sendBeacon&&navigator.sendBeacon(API+'/stop',new Blob([JSON.stringify({room})],{type:'application/json'})); client.leave(); } }catch(e){} });
+
+  $('join').onclick=async()=>{
+    $('join').disabled=true; msg('Connecting…');
+    try{
+      const d=await (await fetch(API+'/token?channel='+encodeURIComponent(ch)+'&role=viewer')).json();
+      if(!d.token) throw new Error(d.error||'no token');
+      avatarUid=d.avatarUid;
+      client=AgoraRTC.createClient({mode:"live",codec:"vp8"});
+      await client.setClientRole("audience");
+      client.on("user-published",async(user,mediaType)=>{
+        if(String(user.uid)!==String(avatarUid)) return;
+        await client.subscribe(user,mediaType);
+        if(mediaType==="video"){ user.videoTrack.play("video"); msg(''); switching=false; }
+        if(mediaType==="audio"){ user.audioTrack.play(); }
+      });
+      client.on("user-unpublished",(user,mediaType)=>{ if(String(user.uid)===String(avatarUid)&&mediaType==="video"&&!switching) msg('Avatar paused…'); });
+      await client.join(d.appId,ch,d.token,d.uid);
+      $('join').style.display='none'; $('hang').style.display='';
+      msg('Waiting for the avatar…');
+    }catch(e){ msg('Error: '+(e.message||e)); $('join').disabled=false; }
+  };
+  buildPicker();
+</script>
+</body></html>
